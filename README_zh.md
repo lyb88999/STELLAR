@@ -131,7 +131,7 @@ stellar/
 │
 ├── simulation/                      # 卫星网络仿真
 │   ├── network_model.py                 # TLE 轨道力学与星间链路模型
-│   ├── topology_manager.py              # 动态拓扑管理与谱聚类分组
+│   ├── topology_manager.py              # 动态拓扑管理与路由
 │   ├── energy_model.py                  # 太阳能与电池仿真
 │   ├── comm_scheduler.py                # 通信调度
 │   └── network_manager.py              # 网络状态管理

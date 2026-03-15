@@ -15,15 +15,6 @@ class Link:
     delay: float
     bandwidth: float
 
-@dataclass
-class Group:
-    """卫星分组信息"""
-    group_id: str
-    members: List[str]
-    leader: str
-    orbit_plane: float  # 轨道平面角度
-    avg_connectivity: float
-
 import threading
 
 class TopologyManager:
@@ -39,7 +30,6 @@ class TopologyManager:
         self.comm_scheduler = comm_scheduler
         self.energy_model = energy_model
         
-        self.groups = {}  # 分组信息
         self.routing_table = {}  # 路由表
         self.topology_graph = nx.Graph()  # 网络拓扑图
         self.link_states = {}  # 链路状态
@@ -159,9 +149,6 @@ class TopologyManager:
             
             print(f"拓扑图边数: {self.topology_graph.number_of_edges()}")
             
-            # 更新分组
-            self._update_groups(satellites, connectivity, quality_matrix)
-
             # 更新地面站连接
             self._update_ground_station_links(current_time)
             
@@ -182,119 +169,6 @@ class TopologyManager:
         queueing_delay = 10.0   # 假设10ms的排队延迟
         
         return propagation_delay + processing_delay + queueing_delay
-        
-    def _update_groups(self, satellites: List[str],
-                      connectivity: np.ndarray,
-                      quality_matrix: np.ndarray):
-        """
-        更新卫星分组
-        使用谱聚类算法进行分组
-        """
-        # 构建亲和度矩阵
-        affinity = quality_matrix * connectivity
-        
-        # 计算拉普拉斯矩阵
-        degree = np.sum(affinity, axis=1)
-        laplacian = np.diag(degree) - affinity
-        
-        # 计算特征值和特征向量
-        eigenvalues, eigenvectors = np.linalg.eigh(laplacian)
-        
-        # 确定最佳分组数
-        n_groups = self._determine_group_number(eigenvalues)
-        
-        # 使用k-means进行分组
-        from sklearn.cluster import KMeans
-        kmeans = KMeans(n_clusters=n_groups, random_state=42)
-        group_labels = kmeans.fit_predict(eigenvectors[:, 1:n_groups])
-        
-        # 更新分组信息
-        self.groups.clear()
-        for group_id in range(n_groups):
-            members = [sat for sat, label in zip(satellites, group_labels) 
-                      if label == group_id]
-            
-            # 选择组长（连接性最好的节点）
-            leader = self._select_group_leader(members, connectivity, satellites)
-            
-            # 计算平均连接性
-            group_indices = [satellites.index(sat) for sat in members]
-            avg_connectivity = np.mean(connectivity[group_indices][:, group_indices])
-            
-            # 计算轨道平面
-            orbit_plane = self._calculate_orbit_plane(members)
-            
-            self.groups[str(group_id)] = Group(
-                group_id=str(group_id),
-                members=members,
-                leader=leader,
-                orbit_plane=orbit_plane,
-                avg_connectivity=avg_connectivity
-            )
-            
-    def _determine_group_number(self, eigenvalues: np.ndarray) -> int:
-        """
-        使用特征值确定最佳分组数
-        基于特征值差异最大的位置
-        """
-        gaps = np.diff(eigenvalues)
-        # 选择最大间隔位置作为分组数
-        n_groups = np.argmax(gaps) + 1
-        # 限制分组数在合理范围内
-        return max(min(n_groups, 10), 2)
-        
-    def _select_group_leader(self, members: List[str],
-                           connectivity: np.ndarray,
-                           satellites: List[str]) -> str:
-        """选择组长"""
-        if not members:
-            return None
-            
-        member_indices = [satellites.index(sat) for sat in members]
-        
-        # 计算每个成员的连接度
-        degrees = []
-        for member in members:
-            degree = 0
-            member_idx = satellites.index(member)
-            for other in members:
-                other_idx = satellites.index(other)
-                if connectivity[member_idx][other_idx] > 0:
-                    degree += 1
-            degrees.append(degree)
-        
-        # 转换为numpy数组
-        degrees = np.array(degrees)
-        
-        # 获取能量水平
-        energy_levels = []
-        for member in members:
-            try:
-                energy = self.energy_model.get_battery_level(member)
-                energy_levels.append(energy)
-            except Exception:
-                energy_levels.append(0.0)
-        
-        energy_levels = np.array(energy_levels)
-        
-        # 避免除以零
-        max_degree = max(np.max(degrees), 1)
-        max_energy = max(np.max(energy_levels), 1)
-        
-        # 综合考虑连接度和能量状态
-        scores = 0.7 * (degrees / max_degree) + 0.3 * (energy_levels / max_energy)
-        
-        leader_idx = np.argmax(scores)
-        return members[leader_idx]
-        
-    def _calculate_orbit_plane(self, satellites: List[str]) -> float:
-        """计算卫星组的平均轨道平面角度"""
-        angles = []
-        for sat in satellites:
-            normal = self.network_model.get_orbit_plane(sat)
-            angle = np.arctan2(normal[1], normal[0])
-            angles.append(angle)
-        return np.mean(angles)
         
     def _update_routing_table(self):
         """更新路由表"""
@@ -329,21 +203,6 @@ class TopologyManager:
                 qualities.append(self.link_states[link].quality)
                 
         return np.prod(qualities) if qualities else 0.0
-        
-    def get_group_members(self, group_id: str) -> List[str]:
-        """获取分组成员"""
-        return self.groups[group_id].members if group_id in self.groups else []
-        
-    def get_group_leader(self, group_id: str) -> str:
-        """获取分组组长"""
-        return self.groups[group_id].leader if group_id in self.groups else None
-        
-    def get_satellite_group(self, satellite: str) -> str:
-        """获取卫星所属分组"""
-        for group_id, group in self.groups.items():
-            if satellite in group.members:
-                return group_id
-        return None
         
     def optimize_topology(self):
         """

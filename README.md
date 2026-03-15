@@ -124,7 +124,7 @@ stellar/
 │
 ├── simulation/                 # Satellite network simulation
 │   ├── network_model.py             # TLE-based orbital mechanics & ISL model
-│   ├── topology_manager.py          # Dynamic topology and spectral grouping
+│   ├── topology_manager.py          # Dynamic topology and routing
 │   ├── energy_model.py              # Solar power and battery simulation
 │   ├── comm_scheduler.py            # Communication scheduling
 │   └── network_manager.py           # Network state management
