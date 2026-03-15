@@ -15,13 +15,13 @@ STELLAR 是一个面向低轨（LEO）卫星星座网络的联邦学习仿真框
 flowchart TD
     subgraph CFG["配置层 (YAML)"]
         C1["星座选择\nIridium-like: 6 轨道 × 11 颗 = 66 颗\nOneWeb: 18 轨道 × ~36 颗 = 651 颗"]
-        C2["数据集\nCICIDS-2017 / 自定义 CSV"]
+        C2["数据集\nHe et al. TIFS 2025（主）/ CICIDS-2017"]
         C3["FL 超参数\n轮次 · 学习率 · batch_size · α · μ"]
         C1 --- C2 --- C3
     end
 
     subgraph DATA["数据层"]
-        DG["数据生成器\nRealTrafficGenerator / CICIDS2017Generator"]
+        DG["数据生成器\nRealTrafficGenerator (He et al. 2025) / CICIDS2017Generator"]
         NI["Dirichlet Non-IID 分区\nalpha · 区域相似性"]
         SD["每颗卫星本地数据分片\n（轨道相关分布）"]
         DG --> NI --> SD
@@ -112,7 +112,7 @@ stellar/
 │   └── energy_config.yaml               # 卫星能量模型参数
 │
 ├── data_simulator/                  # 数据集加载与 Non-IID 分区
-│   ├── real_traffic_generator.py        # 自定义 CSV 流量数据加载器
+│   ├── real_traffic_generator.py        # CSV 流量数据加载器（He et al. 2025 主数据集）
 │   ├── cicids2017_generator.py          # CICIDS-2017 数据集加载器
 │   ├── non_iid_generator.py             # Dirichlet Non-IID 数据分区
 │   └── network_traffic_generator.py     # 合成流量数据生成器
@@ -186,23 +186,27 @@ pip install -e .
 
 ## 数据集准备
 
-STELLAR 支持两种数据集格式：
+STELLAR 支持两个数据集，对应两种实验场景。
 
-### 方式一：自定义流量 CSV（默认）
+### 主数据集 — 卫星-地面融合网络流量（He et al., TIFS 2025）
 
-准备一个包含数值特征列和 `Label` 标签列的 CSV 文件，放置到 `data/` 目录：
+本文主实验所用数据集来源于以下论文：
 
+> J. He, X. Li, X. Zhang, W. Niu and F. Li, "A Synthetic Data-Assisted Satellite Terrestrial Integrated Network Intrusion Detection Framework," *IEEE Transactions on Information Forensics and Security*, vol. 20, pp. 1739–1754, 2025. DOI: [10.1109/TIFS.2025.3530676](https://doi.org/10.1109/TIFS.2025.3530676)
+
+我们下载了该工作发布的原始流量数据文件，经过特征选择、标签归一化、类别合并等预处理后，将多个文件**拼接为一个 CSV 文件**供实验使用。`RealTrafficGenerator` 通过配置中的 `csv_path` 参数直接加载该合并文件：
+
+```yaml
+data:
+  dataset: "real_traffic"
+  csv_path: "data/satellite_traffic.csv"   # He et al. (2025) 合并后的 CSV
 ```
-data/traffic_data.csv
-```
 
-`Label` 列支持：
-- 二分类标签（`0` = 正常，`1` = 恶意）
-- 多类字符串标签（自动 one-hot 编码后二值化）
+CSV 文件需包含数值特征列与 `Label` 标签列（字符串类名或二值 0/1 均支持）。
 
-### 方式二：CICIDS-2017 数据集
+### 辅助数据集 — CICIDS-2017
 
-从加拿大新不伦瑞克大学下载 CICIDS-2017 数据集：
+作为补充基准，STELLAR 同时支持加拿大新不伦瑞克大学发布的 CICIDS-2017 入侵检测数据集：
 
 ```
 https://www.unb.ca/cic/datasets/ids-2017.html
@@ -223,6 +227,13 @@ data/MachineLearningCVE/
 ```
 
 然后使用 `configs/cicids2017_config.yaml` 作为配置文件。
+
+**数据集对照表：**
+
+| 数据集 | 说明 | 配置方式 |
+|---|---|---|
+| He et al. TIFS 2025（主） | 卫星-地面融合网络流量，合并为单个 CSV | `real_traffic` + `csv_path` |
+| CICIDS-2017 | 通用入侵检测基准数据集 | `cicids2017` |
 
 ---
 

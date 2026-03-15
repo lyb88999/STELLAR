@@ -13,13 +13,13 @@ STELLAR is a federated learning framework for LEO satellite constellation networ
 flowchart TD
     subgraph CFG["Configuration  (YAML)"]
         C1["Constellation\nIridium-like: 6 orbits × 11 sats = 66\nOneWeb: 18 orbits × ~36 sats = 651"]
-        C2["Dataset\nCICIDS-2017 / Custom CSV"]
+        C2["Dataset\nHe et al. TIFS 2025 (primary) / CICIDS-2017"]
         C3["FL Hyperparameters\nrounds · lr · batch_size · α · μ"]
         C1 --- C2 --- C3
     end
 
     subgraph DATA["Data Layer"]
-        DG["Data Generator\nRealTrafficGenerator / CICIDS2017Generator"]
+        DG["Data Generator\nRealTrafficGenerator (He et al. 2025) / CICIDS2017Generator"]
         NI["Dirichlet Non-IID Partitioning\nalpha · region similarity"]
         SD["Per-Satellite Dataset Shards\n(orbit-correlated distribution)"]
         DG --> NI --> SD
@@ -105,7 +105,7 @@ stellar/
 │   └── energy_config.yaml           # Satellite energy model parameters
 │
 ├── data_simulator/             # Dataset loading and non-IID data partitioning
-│   ├── real_traffic_generator.py    # Network traffic dataset loader (CSV-based)
+│   ├── real_traffic_generator.py    # CSV traffic dataset loader (He et al. TIFS 2025 primary dataset)
 │   ├── cicids2017_generator.py      # CICIDS-2017 dataset loader
 │   ├── non_iid_generator.py         # Dirichlet non-IID data partitioning
 │   └── network_traffic_generator.py # Synthetic traffic generator
@@ -167,23 +167,40 @@ pip install -e .
 
 ## Dataset
 
-STELLAR uses network traffic classification as the FL task. You need to prepare a CSV dataset with numerical features and a label column.
+STELLAR uses network traffic classification as the FL task and supports two datasets.
 
-**Supported datasets:**
+### Primary dataset — Satellite-terrestrial network traffic (He et al., TIFS 2025)
 
-| Dataset | Description | How to obtain |
-|---|---|---|
-| Custom traffic CSV | Merged network traffic with a `Label` column | Prepare your own or use a public IDS dataset |
-| CICIDS-2017 | Intrusion detection benchmark | [Download from UNB](https://www.unb.ca/cic/datasets/ids-2017.html) |
+The main experiments in our paper use the network traffic dataset released alongside:
 
-After downloading, update `csv_path` in the relevant config file:
+> J. He, X. Li, X. Zhang, W. Niu and F. Li, "A Synthetic Data-Assisted Satellite Terrestrial Integrated Network Intrusion Detection Framework," *IEEE Transactions on Information Forensics and Security*, vol. 20, pp. 1739–1754, 2025. DOI: [10.1109/TIFS.2025.3530676](https://doi.org/10.1109/TIFS.2025.3530676)
+
+We downloaded the raw traffic files from that work, performed preprocessing (feature selection, label normalization, class merging), and concatenated them into a single CSV file. The merged file is used directly by `RealTrafficGenerator` via the `csv_path` config key.
 
 ```yaml
-# configs/baseline_config.yaml
 data:
   dataset: "real_traffic"
-  csv_path: "data/your_traffic_dataset.csv"   # <-- set your path here
+  csv_path: "data/satellite_traffic.csv"   # merged CSV from He et al. (2025)
 ```
+
+The CSV must contain numerical feature columns plus a `Label` column (string class names or binary 0/1 are both supported).
+
+### Secondary dataset — CICIDS-2017
+
+As an alternative benchmark, STELLAR also supports the publicly available CICIDS-2017 intrusion detection dataset from the University of New Brunswick:
+
+```
+https://www.unb.ca/cic/datasets/ids-2017.html
+```
+
+Download the `MachineLearningCVE` folder and use `configs/cicids2017_config.yaml`.
+
+**Supported datasets summary:**
+
+| Dataset | Description | Config |
+|---|---|---|
+| He et al. TIFS 2025 (primary) | Satellite-terrestrial network traffic, merged CSV | `real_traffic` + `csv_path` |
+| CICIDS-2017 | General intrusion detection benchmark | `cicids2017` |
 
 ## Quick Start
 
