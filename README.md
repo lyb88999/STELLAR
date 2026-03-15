@@ -3,6 +3,8 @@
 > **Published in:** IEEE Transactions on Information Forensics and Security, vol. 21, pp. 1766–1780, 2026.
 > DOI: [10.1109/TIFS.2026.3659044](https://doi.org/10.1109/TIFS.2026.3659044)
 
+[[中文文档]](README_zh.md)
+
 STELLAR is a federated learning framework for LEO satellite constellation networks, targeting **malicious traffic recognition (intrusion detection)**. It proposes a **multi-dimensional similarity-based grouping** strategy that clusters satellites by model parameter similarity, loss landscape similarity, and prediction distribution similarity, enabling efficient intra-orbit collaborative training while adapting to the highly dynamic and resource-constrained satellite environment.
 
 ## System Architecture
