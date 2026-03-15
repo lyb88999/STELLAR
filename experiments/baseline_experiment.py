@@ -88,6 +88,17 @@ class BaselineExperiment:
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
             
+        # 设置全局随机种子
+        execution_config = self.config.get('execution', {})
+        if 'random_seed' in execution_config:
+            import random
+            seed = execution_config['random_seed']
+            random.seed(seed)
+            np.random.seed(seed)
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
+            
         # 设置日志
         self._setup_logging()
         
@@ -314,12 +325,13 @@ class BaselineExperiment:
         
         # 初始化聚合器
         self.intra_orbit_aggregators = {}
+        gs_config = self.config.get('ground_station', {})
         ground_station_config = GroundStationConfig(
-            bandwidth_limit=1000.0,
-            storage_limit=10000.0,
-            priority_levels=3,
-            batch_size=10,
-            aggregation_interval=60.0,
+            bandwidth_limit=gs_config.get('bandwidth_limit', 1000.0),
+            storage_limit=gs_config.get('storage_limit', 10000.0),
+            priority_levels=gs_config.get('priority_levels', 3),
+            batch_size=gs_config.get('batch_size', 10),
+            aggregation_interval=gs_config.get('aggregation_interval', 60.0),
             min_updates=self.config['aggregation']['min_updates'],
             max_staleness=self.config['aggregation']['max_staleness'],
             timeout=self.config['aggregation']['timeout'],
@@ -597,13 +609,14 @@ class BaselineExperiment:
         sats_per_orbit = self.config['fl']['satellites_per_orbit']
         
         # 1. 初始化所有地面站
+        gs_config = self.config.get('ground_station', {})
         for i, station_id in enumerate(self.network_model.ground_stations.keys()):
             ground_station_config = GroundStationConfig(
-                bandwidth_limit=1000.0,
-                storage_limit=10000.0,
-                priority_levels=3,
-                batch_size=10,
-                aggregation_interval=60.0,
+                bandwidth_limit=gs_config.get('bandwidth_limit', 1000.0),
+                storage_limit=gs_config.get('storage_limit', 10000.0),
+                priority_levels=gs_config.get('priority_levels', 3),
+                batch_size=gs_config.get('batch_size', 10),
+                aggregation_interval=gs_config.get('aggregation_interval', 60.0),
                 min_updates=self.config['aggregation']['min_updates'],
                 max_staleness=self.config['aggregation']['max_staleness'],
                 timeout=self.config['aggregation']['timeout'],

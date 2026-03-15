@@ -186,7 +186,16 @@ pip install -e .
 
 ## 数据集准备
 
-STELLAR 支持两个数据集，对应两种实验场景。
+STELLAR 支持两个真实数据集，对应两种实验场景。如果您没有或者暂时无法下载这些数据集，可以用我们提供的脚本一键生成测试数据（ Dummy Data ）用于跑通代码流程。
+
+### 🚀（推荐）一键生成测试数据集
+
+首次克隆项目后，强烈建议先运行一次该脚本生成 `data/STIN.csv`。这将保证后续所有的命令可以直接运行而不会报错：
+
+```bash
+python scripts/generate_dummy_data.py
+# 此命令将在 data/ 下生成包含 5000 条记录、10 个特征的虚拟数据集
+```
 
 ### 主数据集 — 卫星-地面融合网络流量（He et al., TIFS 2025）
 
@@ -252,10 +261,43 @@ data:
 
 ### 第二步：运行全量对比实验（STELLAR vs. 基线）
 
+> **注意：** 实验轮次等超参数在配置文件（如 `configs/similarity_grouping_config.yaml`）中通过 `fl.num_rounds` 字段设置，**不通过命令行参数传入**。
+
 ```bash
+# 直接运行（轮次等参数在配置文件中设置）
+python -m experiments.run_fair_comparison_satfl
+```
+
+实验结果会自动保存至 `comparison_results/with_satfl_<时间戳>/` 目录。
+
+**可用命令行参数：**
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `--target-sats` | `0` | 目标卫星数量（0 表示使用 STELLAR 的平均值） |
+| `--fedprox-mu` | `0.01` | FedProx 近端项系数 μ |
+| `--config-dir` | `configs` | 配置文件目录 |
+| `--satfl-noise-dim` | `100` | SDA-FL 噪声维度 |
+| `--satfl-samples` | `1000` | SDA-FL 生成的合成样本数 |
+| `--replot` | — | 重新绘图模式（不重跑实验，仅重绘已有数据） |
+| `--data-dir` | — | 已有实验数据目录（配合 `--replot` 使用） |
+| `--output-dir` | — | 图表输出目录（配合 `--replot` 使用） |
+| `--format` | `png` | 图表格式：`png` / `pdf` / `svg` / `jpg` |
+| `--dpi` | `150` | 图表 DPI |
+| `--no-grid` | — | 不显示网格线 |
+
+**使用示例：**
+
+```bash
+# 自定义 FedProx μ 参数运行
+python -m experiments.run_fair_comparison_satfl --fedprox-mu 0.001
+
+# 利用已有实验结果重新绘图（无需重跑实验）
 python -m experiments.run_fair_comparison_satfl \
-    --rounds 20 \
-    --output_dir comparison_results/
+    --replot \
+    --data-dir comparison_results/with_satfl_20260315_153000 \
+    --output-dir my_plots/ \
+    --format pdf
 ```
 
 ### 第三步：单独运行某个算法
@@ -314,68 +356,131 @@ stats = exp.train()
 
 ## 配置参数说明
 
-所有实验共用的核心参数：
+> **注意：** 框架会根据 TLE 文件自动检测实际卫星数量、轨道数和每轨道卫星数，并覆盖 `fl.num_satellites`、`fl.num_orbits`、`fl.satellites_per_orbit` 的配置值。
+
+### 通用参数（所有实验共用）
 
 ```yaml
 fl:
-  num_satellites: 66          # 卫星总数
-  num_orbits: 6               # 轨道面数量
-  satellites_per_orbit: 11    # 每轨道卫星数
-  num_rounds: 20              # 联邦学习通信轮次
+  num_satellites: 66          # 卫星总数（会被 TLE 自动检测值覆盖）
+  num_orbits: 6               # 轨道面数量（会被 TLE 自动检测值覆盖）
+  satellites_per_orbit: 11    # 每轨道卫星数（会被 TLE 自动检测值覆盖）
+  num_rounds: 20              # 联邦学习通信总轮次
   round_interval: 600         # 每轮仿真时间间隔（秒）
+
+network:
+  tle_file: "configs/Iridium_TLEs.txt"  # TLE 轨道根数文件（决定星座构型）
+  max_distance: 4000.0                   # 最大星间通信距离（km）
 
 data:
   dataset: "real_traffic"     # 数据集类型：real_traffic | cicids2017
-  csv_path: "data/traffic_data.csv"
-  iid: false                  # true = IID 分布；false = Non-IID（Dirichlet）
-  alpha: 0.5                  # Dirichlet 参数（仅 non-IID 时生效）
+  csv_path: "data/STIN.csv"   # CSV 数据文件路径
+  iid: false                  # true = IID 分布；false = Non-IID（Dirichlet 分区）
+  alpha: 0.5                  # Dirichlet 参数，越小数据异构性越强（仅 non-IID 时生效）
   test_size: 0.2              # 测试集比例
+  region_similarity: false    # 是否启用轨道区域相似性数据分区
+  overlap_ratio: 0.5          # 区域重叠比例（仅 region_similarity: true 时生效）
+
+model:
+  type: "traffic_classifier"  # 模型类型：traffic_classifier | hybrid_traffic_classifier
+  hidden_dim: 64              # 隐藏层维度
 
 client:
-  batch_size: 32
-  local_epochs: 5
-  learning_rate: 0.01
-  momentum: 0.9
-
-network:
-  tle_file: "configs/Iridium_TLEs.txt"   # TLE 文件路径（决定星座构型）
-  max_distance: 4000.0                    # 最大星间通信距离（km）
+  batch_size: 32              # 本地训练批次大小
+  local_epochs: 5             # 每轮本地训练轮数
+  learning_rate: 0.01         # 本地训练学习率
+  momentum: 0.9               # SGD 动量系数
+  compute_capacity: 1.0       # 计算能力系数（预留，当前未影响训练）
+  storage_capacity: 1000.0    # 存储容量（MB，预留）
 
 aggregation:
-  min_updates: 2              # 触发轨道内聚合所需的最少更新数
-  max_staleness: 300.0        # 最大允许延迟（秒）
-  timeout: 600.0              # 聚合超时时间（秒）
-  weighted_average: true      # 是否按样本数加权平均
+  min_updates: 2              # 触发聚合所需的最少卫星更新数
+  max_staleness: 300.0        # 允许的最大模型陈旧度（秒）
+  timeout: 600.0              # 聚合等待超时时间（秒）
+  weighted_average: true      # 是否按样本数量加权聚合
+
+energy:
+  config_file: "configs/energy_config.yaml"  # 能量模型配置文件路径
 ```
 
 ### STELLAR 专属参数
 
 ```yaml
 group:
-  max_distance: 2              # 相似度搜索的跳数半径
-  max_group_size: 5            # 每个分组最大卫星数
-  similarity_threshold: 0.5   # 加入分组所需的最低综合相似度
+  max_distance: 2              # 相似度搜索半径（跳数，使用 Iridium；km，使用 OneWeb）
+  max_group_size: 5            # 每个分组的最大卫星数
+  max_group_size_threshold: 4  # 超过此大小时触发相似度门限自动调整
+  similarity_threshold: 0.5    # 加入分组所需的最低综合相似度分数
   similarity_refresh_rounds: 5 # 每隔 N 轮重新计算分组
+  initial_group_size: 1        # 初始阶段每个卫星自成一组（冷启动）
   weights:
-    alpha: 0.4                 # 参数相似度权重
-    beta: 0.3                  # 损失相似度权重
-    gamma: 0.3                 # 预测分布相似度权重
+    alpha: 0.4                 # 模型参数余弦相似度权重
+    beta: 0.3                  # 损失曲线相似度权重
+    gamma: 0.3                 # 预测分布 Hellinger 距离权重
 ```
 
 ### FedProx 专属参数
 
 ```yaml
 fedprox:
-  mu: 0.01    # 近端项系数（控制本地模型偏离全局模型的程度）
+  mu: 0.01    # 近端项系数 μ，控制本地模型偏离全局模型的惩罚强度
+```
+
+### 传播受限聚合参数（Prop-FedAvg / Prop-FedProx / SDA-FL）
+
+```yaml
+propagation:
+  hops: 2                    # 模型更新最大传播跳数
+  max_satellites: 648        # 传播范围内最大参与卫星数
+  intra_orbit_links: true    # 是否允许轨道内 ISL
+  inter_orbit_links: true    # 是否允许跨轨道 ISL
+  link_reliability: 0.95     # ISL 链路可靠性概率
+  energy_per_hop: 0.05       # 每跳通信能耗（Wh）
+  # propagation_delay: 10    # 每跳传播时延（ms）— 配置文件中存在但代码未读取
+```
+
+### SDA-FL 专属参数
+
+```yaml
+sda_fl:
+  noise_dim: 100             # GAN 生成器输入噪声向量维度
+  num_synthetic_samples: 1000  # 每轮生成的合成样本总数
+  gan_samples_per_client: 100  # 每个客户端分配到的合成样本数
+  gan_epochs: 50             # 每轮 GAN 训练迭代次数
+  initial_rounds: 3          # GAN 训练启动前的热身轮数（纯 FL 阶段）
+  regenerate_interval: 5     # 每隔 N 轮重新训练 GAN
+  pseudo_threshold: 0.8      # 伪标签置信度阈值
+  dp_epsilon: 1.0            # 差分隐私 ε 参数（越小隐私保护越强）
+  dp_delta: 1.0e-05          # 差分隐私 δ 参数
+```
+
+### 执行参数
+
+```yaml
+execution:
+  max_workers: 8             # 并行线程数（仅 SDA-FL 读取）
+  random_seed: 42            # 随机种子（配置文件中存在但代码未读取）
+  log_level: "INFO"          # 日志级别（配置文件中存在但代码未读取）
 ```
 
 ### 鲁棒性测试参数
 
 ```yaml
 robustness:
-  parameter_noise_level: 0.1  # 参数噪声强度（0.0 表示禁用）
+  parameter_noise_level: 0.1  # 参数扰动噪声强度（0.0 表示禁用）
   noise_start_round: 5        # 从第几轮开始注入噪声
 ```
+
+### ⚠️ 配置文件中存在但当前代码未读取的参数
+
+| 参数 | 所在块 | 说明 |
+|---|---|---|
+| `ground_station.*` | `ground_station` | 地面站带宽、存储等参数在代码中被硬编码，配置值被忽略 |
+| `early_stopping.*` | `early_stopping` | 早停逻辑未在当前实验中实现 |
+| `fedavg.participation_rate` | `fedavg` | 全量参与，该参数未生效 |
+| `execution.random_seed` | `execution` | 未设置全局随机种子 |
+| `execution.log_level` | `execution` | 日志级别在代码中固定为 INFO |
+| `propagation.propagation_delay` | `propagation` | 字段存在于配置，但代码未读取 |
 
 ---
 

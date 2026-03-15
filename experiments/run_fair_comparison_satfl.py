@@ -1521,16 +1521,19 @@ def create_modified_config(base_config_path, target_satellite_count, output_path
         # 修改传播配置
         if 'propagation' not in config:
             config['propagation'] = {}
+            
+        # 移除强制约束，让各算法能由 hops 决定实际触达的卫星数，不再受限于极小值（如 24）
+        config['propagation']['max_satellites'] = 651
         
-        config['propagation']['max_satellites'] = target_satellite_count
-        
-        # 根据卫星数量调整跳数
-        if target_satellite_count <= 10:
-            config['propagation']['hops'] = 1
-        elif target_satellite_count <= 20:
-            config['propagation']['hops'] = 2
-        else:
-            config['propagation']['hops'] = 3
+        # 保留原有的跳数设置，如果未设置则给定一个合理默认值（按需）
+        if 'hops' not in config['propagation']:
+            # 根据卫星数量调整跳数（仅作为后备方案）
+            if target_satellite_count <= 10:
+                config['propagation']['hops'] = 1
+            elif target_satellite_count <= 20:
+                config['propagation']['hops'] = 2
+            else:
+                config['propagation']['hops'] = 3
         
         # 处理client配置，移除不支持的参数
         if 'client' in config and 'optimizer' in config['client']:
@@ -1650,14 +1653,19 @@ def run_fair_comparison():
     logger.info(f"STELLAR平均使用卫星数: {avg_similarity_sats:.2f}")
     
     # 2. 为FedProx、FedAvg和SDA-FL创建配置文件
-    target_sats = 24 if args.target_sats == 0 else args.target_sats
+    target_sats = int(avg_similarity_sats) if args.target_sats == 0 else args.target_sats
     logger.info(f"为SDA-FL、FedProx和FedAvg设置目标卫星数: {target_sats}")
     
     # 创建配置目录
     os.makedirs("configs/temp", exist_ok=True)
     
     # 为SDA-FL创建配置
-    satfl_config = create_satfl_config(args, target_sats)
+    # 直接使用准备好的 sda_fl_config.yaml，它已经是为最新实验（例如 OneWeb）配置好的
+    satfl_config = create_modified_config(
+        "configs/sda_fl_config.yaml",
+        target_sats,
+        f"configs/temp/sdafl_{target_sats}sats.yaml"
+    )
     
     # 为FedProx和FedAvg创建配置
     fedprox_config = create_modified_config(

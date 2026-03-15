@@ -431,11 +431,11 @@ class SDAFLExperiment(BaselineExperiment):
             # 1. 确定当前可见的卫星
             visible_satellites = self._get_visible_satellites(current_time)
             
-            if not visible_satellites:
+            while not visible_satellites:
                 self.logger.warning(f"当前时间点没有可见卫星，等待60秒")
                 current_time += 60  # 等待60秒
                 self.topology_manager.update_topology(current_time)  # 更新拓扑
-                continue
+                visible_satellites = self._get_visible_satellites(current_time)
                 
             self.logger.info(f"当前有 {len(visible_satellites)} 颗卫星可见")
 
@@ -674,11 +674,11 @@ class SDAFLExperiment(BaselineExperiment):
             # 1. 确定当前可见的卫星
             visible_satellites = self._get_visible_satellites(current_time)
             
-            if not visible_satellites:
+            while not visible_satellites:
                 self.logger.warning(f"当前时间点没有可见卫星，等待60秒")
                 current_time += 60  # 等待60秒
                 self.topology_manager.update_topology(current_time)  # 更新拓扑
-                continue
+                visible_satellites = self._get_visible_satellites(current_time)
                 
             self.logger.info(f"当前有 {len(visible_satellites)} 颗卫星可见")
 

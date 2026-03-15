@@ -3,8 +3,8 @@
 
 # Network configuration
 network:
-  tle_file: "configs/Iridium_TLEs.txt"
-  max_distance: 4000.0  # Maximum ISL distance (km)
+  tle_file: "configs/oneweb_TLEs.txt"
+  max_distance: 5000.0  # Maximum ISL distance (km), increased for OneWeb
 
 # Energy model configuration
 energy:
@@ -12,11 +12,11 @@ energy:
 
 # Federated learning configuration
 fl:
-  num_satellites: 66         # Total number of satellites
-  satellites_per_orbit: 11   # Satellites per orbital plane
-  num_orbits: 6              # Number of orbital planes
+  num_satellites: 651        # OneWeb constellation
+  satellites_per_orbit: 40   # Satellites per orbital plane
+  num_orbits: 12             # Number of orbital planes
   num_rounds: 20             # Number of FL communication rounds
-  round_interval: 600        # Simulated seconds between rounds
+  round_interval: 300        # Simulated seconds between rounds
 
 # FedAvg-specific configuration
 fedavg:
@@ -27,7 +27,7 @@ fedavg:
 # Propagation configuration
 propagation:
   hops: 2                    # Maximum propagation hops
-  max_satellites: 24         # Maximum number of satellites in propagation range
+  max_satellites: 648        # Maximum number of satellites in propagation range (OneWeb scale)
   relay_selection: "nearest" # Relay selection strategy: nearest | random | energy_aware
   intra_orbit_links: true    # Allow intra-orbit ISLs
   inter_orbit_links: true    # Allow inter-orbit ISLs
@@ -39,7 +39,7 @@ propagation:
 # Set csv_path to your local traffic dataset CSV file
 data:
   dataset: "real_traffic"
-  csv_path: "data/traffic_data.csv"   # <-- update this path
+  csv_path: "data/STIN.csv"   # <-- update this path
   test_size: 0.2
   iid: true
   alpha: 0.5
@@ -65,17 +65,17 @@ client:
 
 # Aggregation configuration
 aggregation:
-  min_updates: 2
+  min_updates: 1             # Reduced for large-scale OneWeb constellation
   max_staleness: 300.0
   timeout: 600.0
   weighted_average: true
 
 # Ground station configuration
 ground_station:
-  bandwidth_limit: 1000.0    # Mbps
-  storage_limit: 10000.0     # MB
+  bandwidth_limit: 5000.0    # Mbps, increased for OneWeb scale
+  storage_limit: 50000.0     # MB, increased for OneWeb scale
   priority_levels: 3
-  batch_size: 10
+  batch_size: 50
   aggregation_interval: 60.0
 
 # Execution configuration

@@ -60,17 +60,25 @@ class SatelliteNetwork:
                     line2 = lines[i + 2].strip()
                     
                     # 提取TLE参数过滤异常（备份/失效卫星）
-                    inc_deg = float(line2[8:16])
-                    mean_motion = float(line2[52:63])  # rev/day
-                    ecc_str = line2[26:33].strip()
-                    ecc = float('0.' + ecc_str)
+                    try:
+                        inc_deg = float(line2[8:16])
+                        mean_motion = float(line2[52:63])  # rev/day
+                        ecc_str = line2[26:33].strip()
+                        ecc = float('0.' + ecc_str)
+                    except ValueError:
+                        # 兜底：处理非标准空格的 TLE 数据
+                        parts = line2.split()
+                        inc_deg = float(parts[2])
+                        ecc_str = parts[4]
+                        ecc = float(ecc_str) if '.' in ecc_str else float('0.' + ecc_str.strip())
+                        # 查找属于 Mean Motion 的字段（通常是倒数第一个长数字）
+                        for p in reversed(parts):
+                            if len(p) > 5 and '.' in p:
+                                mean_motion = float(p[:11])
+                                break
                     
-                    if not (87.8 < inc_deg < 88.0 and 
-                            13.10 < mean_motion < 13.25 and 
-                            ecc < 0.001):
-                        self.logger.debug(f"过滤异常卫星 {name}: inc={inc_deg:.3f}, MM={mean_motion:.3f}, ecc={ecc:.6f}")
-                        continue  # 丢弃~5颗无效
-                    
+                    # 取消硬编码的倾角和速率规律过滤，因为不同的仿真 TLE（如生成的 Walker 星座）参数不一定符合此限制
+                    # 只要 TLE 解析成功，就作为有效卫星保留
                     valid_count += 1
                     satellite = EarthSatellite(line1, line2, name, self.ts)
                     

@@ -19,7 +19,7 @@ fl:
 # Set csv_path to your local traffic dataset CSV file
 data:
   dataset: "real_traffic"
-  csv_path: "data/traffic_data.csv"   # <-- update this path
+  csv_path: "data/STIN.csv"   # <-- update this path
   test_size: 0.2             # Fraction of data for testing
   iid: true                  # true = IID split; false = non-IID (Dirichlet)
   alpha: 0.5                 # Dirichlet alpha (used only when iid: false)

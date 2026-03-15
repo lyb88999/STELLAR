@@ -2,8 +2,8 @@
 
 # Network configuration
 network:
-  tle_file: "configs/Iridium_TLEs.txt"
-  max_distance: 4000.0  # Maximum ISL distance (km)
+  tle_file: "configs/oneweb_TLEs.txt"
+  max_distance: 5000.0  # Maximum ISL distance (km), increased for OneWeb
 
 # Energy model configuration
 energy:
@@ -11,9 +11,9 @@ energy:
 
 # Federated learning configuration
 fl:
-  num_satellites: 66         # Total number of satellites
-  satellites_per_orbit: 11   # Satellites per orbital plane
-  num_orbits: 6              # Number of orbital planes
+  num_satellites: 651        # OneWeb constellation
+  satellites_per_orbit: 40   # Satellites per orbital plane
+  num_orbits: 12             # Number of orbital planes
   num_rounds: 20             # Number of FL communication rounds
   round_interval: 300        # Simulated seconds between rounds
 
@@ -29,7 +29,7 @@ fedprox:
 # Set csv_path to your local traffic dataset CSV file
 data:
   dataset: "real_traffic"
-  csv_path: "data/traffic_data.csv"   # <-- update this path
+  csv_path: "data/STIN.csv"   # <-- update this path
   test_size: 0.2             # Fraction of data for testing
   iid: true                  # true = IID split; false = non-IID (Dirichlet)
   alpha: 0.3                 # Dirichlet alpha (smaller = more heterogeneous)
@@ -53,7 +53,7 @@ client:
 
 # Aggregation configuration
 aggregation:
-  min_updates: 2
+  min_updates: 1             # Reduced for large-scale OneWeb constellation
   max_staleness: 300.0
   timeout: 600.0
   weighted_average: true

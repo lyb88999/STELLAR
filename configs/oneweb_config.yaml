@@ -18,7 +18,7 @@ fl:
 # 数据配置
 data:
   dataset: "real_traffic"
-  csv_path: "data/traffic_data.csv"   # <-- update this path
+  csv_path: "data/STIN.csv"   # <-- update this path
   test_size: 0.2
   iid: false
   alpha: 0.5

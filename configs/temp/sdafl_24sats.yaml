@@ -21,11 +21,11 @@ data:
 energy:
   config_file: configs/energy_config.yaml
 fl:
-  num_orbits: 12
+  num_orbits: 6
   num_rounds: 20
-  num_satellites: 651
+  num_satellites: 66
   round_interval: 300
-  satellites_per_orbit: 40
+  satellites_per_orbit: 11
 ground_station:
   aggregation_interval: 60.0
   bandwidth_limit: 1000.0
@@ -39,8 +39,11 @@ model:
   momentum: 0.9
   type: traffic_classifier
 network:
-  max_distance: 5000.0
-  tle_file: configs/oneweb_TLEs.txt
+  max_distance: 4000.0
+  tle_file: configs/Iridium_TLEs.txt
+propagation:
+  hops: 3
+  max_satellites: 24
 sda_fl:
   dp_delta: 1.0e-05
   dp_epsilon: 1.0

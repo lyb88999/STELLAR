@@ -41,6 +41,9 @@ model:
 network:
   max_distance: 5000.0
   tle_file: configs/oneweb_TLEs.txt
+propagation:
+  hops: 3
+  max_satellites: 651
 sda_fl:
   dp_delta: 1.0e-05
   dp_epsilon: 1.0

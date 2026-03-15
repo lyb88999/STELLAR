@@ -1,6 +1,6 @@
 aggregation:
   max_staleness: 300.0
-  min_updates: 2
+  min_updates: 1
   timeout: 600.0
   weighted_average: true
 client:
@@ -20,6 +20,14 @@ data:
   test_size: 0.2
 energy:
   config_file: configs/energy_config.yaml
+execution:
+  log_level: INFO
+  max_workers: 8
+  random_seed: 42
+fedavg:
+  min_satellite_per_orbit: 3
+  participation_rate: 1.0
+  selection_method: random
 fl:
   num_orbits: 12
   num_rounds: 20
@@ -28,10 +36,10 @@ fl:
   satellites_per_orbit: 40
 ground_station:
   aggregation_interval: 60.0
-  bandwidth_limit: 1000.0
-  batch_size: 10
+  bandwidth_limit: 5000.0
+  batch_size: 50
   priority_levels: 3
-  storage_limit: 10000.0
+  storage_limit: 50000.0
 model:
   batch_size: 32
   hidden_dim: 64
@@ -41,13 +49,12 @@ model:
 network:
   max_distance: 5000.0
   tle_file: configs/oneweb_TLEs.txt
-sda_fl:
-  dp_delta: 1.0e-05
-  dp_epsilon: 1.0
-  gan_epochs: 50
-  gan_samples_per_client: 100
-  initial_rounds: 3
-  noise_dim: 100
-  num_synthetic_samples: 1000
-  pseudo_threshold: 0.8
-  regenerate_interval: 5
+propagation:
+  energy_per_hop: 0.05
+  hops: 2
+  inter_orbit_links: true
+  intra_orbit_links: true
+  link_reliability: 0.95
+  max_satellites: 651
+  propagation_delay: 10
+  relay_selection: nearest
