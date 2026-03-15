@@ -1279,7 +1279,7 @@ class BaselineExperiment:
             # 如果参数分发失败，提前返回
             if not current_time:  # 假设_distribute_orbit_params在失败时返回None
                 self.logger.error(f"轨道 {orbit_id} 参数分发失败")
-                return False
+                return False, orbit_stats
             orbit_stats['communication_energy'] += (pre_comm_energy - post_comm_energy)
             orbit_stats['receiving_satellites'].update(orbit_satellites)
 
@@ -1654,13 +1654,14 @@ class BaselineExperiment:
         try:
             orbit_accuracies = self.evaluate_orbit_models()
             self.logger.info("\n=== 全局聚合阶段 ===")
-            
-            # 强制触发聚合
-            if not self.global_aggregator.force_aggregate(round_num):
-                self.logger.warning("强制聚合失败")
-                return False
 
-            # 由于 force_aggregate 已经消耗了 pending_updates，我们需要从 model_versions 获取结果
+            # 尝试强制触发聚合；若自动聚合已提前触发（pending_updates 已被清空），
+            # force_aggregate 会返回 False，但结果已存入 model_versions，仍可继续。
+            force_ok = self.global_aggregator.force_aggregate(round_num)
+            if not force_ok:
+                self.logger.info("force_aggregate 返回 False（可能已由 receive_station_update 自动聚合），尝试直接获取当前模型")
+
+            # 从 model_versions 获取最新聚合结果（无论聚合由谁触发）
             global_update = self.global_aggregator.get_current_model()
             
             if global_update:

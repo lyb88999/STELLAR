@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 from typing import Dict, List, Tuple
 import numpy as np
 from datetime import datetime
@@ -27,8 +28,8 @@ class EnergyModel:
         """
         self.network_model = network_model
         self.configs = self._load_configs(config_file)
-        self.battery_levels = {}  # 电池电量状态
-        self.energy_usage = {}    # 能量使用记录
+        self.battery_levels = {}              # 电池电量状态
+        self.energy_usage = defaultdict(list)  # 能量使用记录
         self.solar_intensity = 1361.0  # 太阳常数 (W/m²)
         self.current_satellite = None  # 添加当前卫星属性
         
@@ -275,16 +276,16 @@ class EnergyModel:
         """
         if amount <= 0:
             return True
-            
-        # 降低能量检查的阈值
-        min_level = 0.1  # 电池最低电量阈值降低到10%
-        
+
         # 确保卫星有电池电量记录
         if satellite_id not in self.battery_levels:
             self.initialize_battery(satellite_id)
-            
+
         current_level = self.battery_levels.get(satellite_id, 0)
-        return current_level - amount >= current_level * min_level
+        # 保留电池总容量的 10% 作为最低安全阈值
+        config = self.get_satellite_config(satellite_id)
+        min_reserve = config.battery_capacity * 0.1
+        return current_level - amount >= min_reserve
         
     def has_minimum_energy(self, satellite: str) -> bool:
         """检查是否有最小运行能量"""

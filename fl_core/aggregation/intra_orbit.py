@@ -164,18 +164,15 @@ class IntraOrbitAggregator:
         updates = self.pending_updates[round_number]
         if len(updates) < self.config.min_updates:
             return False
-            
+
         current_time = datetime.now().timestamp()
         earliest_update = min(self.update_timestamps[round_number].values())
-        
-        # 如果达到最小更新数量就进行聚合
+
+        # 达到最小更新数量，或已超时，则进行聚合
         if len(updates) >= self.config.min_updates:
             return True
-            
-        # 检查是否超时
         if current_time - earliest_update > self.config.timeout:
             return True
-            
         return False
         
     def _aggregate_round(self, round_number: int):
