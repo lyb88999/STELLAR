@@ -7,15 +7,18 @@ from astropy import units as u
 from astropy.coordinates import CartesianRepresentation
 
 class SatelliteNetwork:
-    def __init__(self, tle_file: str):
+    def __init__(self, tle_file: str, max_isl_distance: float = 4000.0):
         """
         初始化卫星网络模型
         Args:
             tle_file: TLE数据文件路径
+            max_isl_distance: 星间链路最大通信距离 (km)
         """
         # 添加logger
         self.logger = logging.getLogger(__name__)
-        
+
+        self.max_isl_distance = max_isl_distance
+
         self.ts = load.timescale()
         self.satellites = self._load_satellites(tle_file)
         self.positions_cache = {}  # 位置缓存
@@ -253,6 +256,24 @@ class SatelliteNetwork:
     #         self.logger.error(f"可见性检查主方法出错: {str(e)}")
     #         return False
 
+    def _is_earth_blocked(self, pos1: np.ndarray, pos2: np.ndarray) -> bool:
+        """
+        检查两点连线是否被地球遮挡（地球遮挡检测）
+        Args:
+            pos1, pos2: ECEF 坐标 (km)
+        Returns:
+            True 表示连线穿过地球，链路不可用
+        """
+        R_EARTH = 6371.0  # km
+        d = pos2 - pos1
+        denom = np.dot(d, d)
+        if denom == 0:
+            return False
+        # 线段上离地心最近点的参数 t
+        t = np.clip(-np.dot(pos1, d) / denom, 0.0, 1.0)
+        closest = pos1 + t * d
+        return bool(np.linalg.norm(closest) < R_EARTH)
+
     def _check_visibility(self, src: str, dst: str, time: float) -> bool:
         """
         检查源节点和目标节点之间是否可见
@@ -263,28 +284,27 @@ class SatelliteNetwork:
                 station_id = src if src.startswith('station_') else dst
                 sat_id = dst if dst.startswith('satellite_') else src
                 return self.check_ground_station_visibility(station_id, sat_id, time)
-                
-            # 卫星间可见性检查 - 基于距离
+
+            # 卫星间可见性检查
             pos1 = self.compute_position(src, time)
             pos2 = self.compute_position(dst, time)
-            
-            # 如果位置无效（0,0,0），则不可见
+
+            # 位置无效（0,0,0）则不可见
             if np.all(pos1 == 0) or np.all(pos2 == 0):
                 return False
-                
+
             dist = np.linalg.norm(pos1 - pos2)
-            
-            # 最大可见距离 (km) - 应该从配置读取，这里使用宽容值
-            # OneWeb 轨道高度 ~1200km，相邻卫星距离较近
-            # 跨轨道距离可能较远
-            MAX_ISL_DISTANCE = 5000.0 
-            
-            if dist <= MAX_ISL_DISTANCE:
-                # self.logger.debug(f"卫星 {src} 与 {dst} 可见, 距离: {dist:.2f}km")
-                return True
-                
-            return False
-            
+
+            # 超过最大 ISL 距离（从配置读取）
+            if dist > self.max_isl_distance:
+                return False
+
+            # 地球遮挡检查
+            if self._is_earth_blocked(pos1, pos2):
+                return False
+
+            return True
+
         except Exception as e:
             self.logger.error(f"可见性检查错误 ({src}-{dst}): {str(e)}")
             return False

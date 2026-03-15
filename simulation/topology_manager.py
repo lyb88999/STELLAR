@@ -93,7 +93,7 @@ class TopologyManager:
             # 3. 计算可见性矩阵 (n_samples, n_sats, n_sats)
             # 假设可见性仅由距离决定 (简化模型，忽略地球遮挡，因为在同轨道或相邻轨道通常满足)
             # 如果需要地球遮挡检查，仍然需要调用 _check_visibility，但我们可以先用距离过滤
-            MAX_DIST = 6000.0
+            MAX_DIST = self.network_model.max_isl_distance
             visibility_matrices = (dist_matrices < MAX_DIST) & (dist_matrices > 0)
             
             # 4. 聚合所有时间点的可见性
@@ -406,7 +406,7 @@ class TopologyManager:
     def check_visibility(self, src: str, dst: str, time: float) -> bool:
         """检查两个节点是否可见"""
         try:
-            return self.network_model.check_visibility(src, dst, time)
+            return self.network_model._check_visibility(src, dst, time)
         except Exception as e:
             self.logger.error(f"拓扑管理器可见性检查出错: {str(e)}")
             return False

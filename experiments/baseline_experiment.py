@@ -185,7 +185,10 @@ class BaselineExperiment:
     def _init_components(self):
         """初始化系统组件"""
         # 网络组件
-        self.network_model = SatelliteNetwork(self.config['network']['tle_file'])
+        self.network_model = SatelliteNetwork(
+            self.config['network']['tle_file'],
+            max_isl_distance=self.config['network'].get('max_distance', 4000.0)
+        )
         
         # 自动检测轨道和卫星数量
         max_orbit = 0
