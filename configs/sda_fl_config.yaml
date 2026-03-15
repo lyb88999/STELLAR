@@ -1,8 +1,14 @@
+# SDA-FL baseline configuration
+# GAN-based synthetic data augmentation federated learning
+
+# Aggregation configuration
 aggregation:
   max_staleness: 300.0
   min_updates: 2
   timeout: 600.0
   weighted_average: true
+
+# Client configuration
 client:
   batch_size: 32
   compute_capacity: 1.0
@@ -10,44 +16,59 @@ client:
   local_epochs: 5
   momentum: 0.9
   storage_capacity: 1000.0
+
+# Data configuration
+# Set csv_path to your local traffic dataset CSV file
 data:
-  alpha: 0.5
-  csv_path: /Users/lyb/Downloads/gitProjects/STI/merged_traffic_data_20250305_111338.csv
   dataset: real_traffic
+  csv_path: "data/traffic_data.csv"   # <-- update this path
   iid: true
   overlap_ratio: 0.5
   region_similarity: false
   test_size: 0.2
+  alpha: 0.5
+
+# Energy model configuration
 energy:
   config_file: configs/energy_config.yaml
+
+# Federated learning configuration
 fl:
   num_orbits: 6
   num_rounds: 20
   num_satellites: 66
   round_interval: 300
   satellites_per_orbit: 11
+
+# Ground station configuration
 ground_station:
   aggregation_interval: 60.0
   bandwidth_limit: 1000.0
   batch_size: 10
   priority_levels: 3
   storage_limit: 10000.0
+
+# Model configuration
 model:
   batch_size: 32
   hidden_dim: 64
   learning_rate: 0.01
   momentum: 0.9
   type: traffic_classifier
+
+# Network configuration
 network:
   max_distance: 4000.0
   tle_file: configs/Iridium_TLEs.txt
+
+# SDA-FL specific configuration
 sda_fl:
-  dp_delta: 1.0e-05
-  dp_epsilon: 1.0
-  gan_epochs: 50
+  dp_delta: 1.0e-05          # Differential privacy delta
+  dp_epsilon: 1.0            # Differential privacy epsilon
+  gan_epochs: 50             # GAN training epochs per round
   gan_samples_per_client: 100
-  initial_rounds: 3
-  noise_dim: 100
+  initial_rounds: 3          # Warm-up rounds before GAN training
+  noise_dim: 100             # GAN latent noise dimension
   num_synthetic_samples: 1000
-  pseudo_threshold: 0.8
-  regenerate_interval: 5
+  pseudo_threshold: 0.8      # Confidence threshold for pseudo-labeling
+  regenerate_interval: 5     # Re-train GAN every N rounds

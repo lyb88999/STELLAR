@@ -46,6 +46,14 @@ class LimitedPropagationFedAvg(FedAvgExperiment):
         
         # 创建卫星距离矩阵
         satellites = list(self.clients.keys())
+        # 动态检测每个轨道的最大卫星编号
+        orbit_max_sats = {}
+        for sat_id in satellites:
+            parts = sat_id.split('_')[1].split('-')
+            if len(parts) == 2:
+                orbit_id, sat_num = int(parts[0]), int(parts[1])
+                orbit_max_sats[orbit_id] = max(orbit_max_sats.get(orbit_id, 0), sat_num)
+        
         for sat_id in satellites:
             if sat_id not in self.satellite_neighbors:
                 self.satellite_neighbors[sat_id] = []
@@ -56,18 +64,23 @@ class LimitedPropagationFedAvg(FedAvgExperiment):
                 continue
                 
             orbit_id, sat_num = int(parts[0]), int(parts[1])
+            max_sat_num = orbit_max_sats.get(orbit_id, self.config['fl']['satellites_per_orbit'])
             
-            # 寻找同一轨道的邻居卫星
-            for neighbor_num in range(1, self.config['fl']['satellites_per_orbit'] + 1):
-                if neighbor_num == sat_num:
-                    continue  # 跳过自己
-                    
-                neighbor_id = f"satellite_{orbit_id}-{neighbor_num}"
-                if neighbor_id in satellites:
-                    self.satellite_neighbors[sat_id].append(neighbor_id)
+            # 寻找同一轨道的邻居卫星 (环形拓扑)
+            # 前一个邻居
+            prev_num = sat_num - 1 if sat_num > 1 else max_sat_num
+            prev_id = f"satellite_{orbit_id}-{prev_num}"
+            if prev_id in satellites:
+                self.satellite_neighbors[sat_id].append(prev_id)
+                
+            # 后一个邻居
+            next_num = sat_num + 1 if sat_num < max_sat_num else 1
+            next_id = f"satellite_{orbit_id}-{next_num}"
+            if next_id in satellites:
+                self.satellite_neighbors[sat_id].append(next_id)
             
-            # 也可以添加不同轨道的邻居（如果需要）
-            if self.propagation_hops > 1:
+            # 添加不同轨道的邻居（如果配置启用了跨轨道链接）
+            if self.inter_orbit_links and self.propagation_hops > 1:
                 for other_orbit in range(1, self.config['fl']['num_orbits'] + 1):
                     if other_orbit == orbit_id:
                         continue  # 跳过同一轨道
@@ -422,74 +435,7 @@ class LimitedPropagationFedAvg(FedAvgExperiment):
         self.logger.info(f"最终选择 {len(all_satellites)} 颗卫星")
         return all_satellites
 
-    def _build_satellite_network(self):
-        """构建更丰富的卫星间通信网络"""
-        self.logger.info("构建卫星间通信网络...")
-        
-        # 创建卫星距离矩阵
-        satellites = list(self.clients.keys())
-        self.satellite_neighbors = {}
-        
-        for sat_id in satellites:
-            self.satellite_neighbors[sat_id] = []
-            
-            # 解析卫星轨道和编号
-            parts = sat_id.split('_')[1].split('-')
-            if len(parts) != 2:
-                continue
-                
-            orbit_id, sat_num = int(parts[0]), int(parts[1])
-            satellites_per_orbit = self.config['fl']['satellites_per_orbit']
-            
-            # 添加同轨道邻居 (包括距离=2的卫星)
-            for distance in [1, 2]:  # 距离1和2的卫星
-                # 向后
-                next_num = sat_num + distance
-                if next_num > satellites_per_orbit:
-                    next_num = next_num - satellites_per_orbit
-                next_id = f"satellite_{orbit_id}-{next_num}"
-                if next_id in satellites and next_id not in self.satellite_neighbors[sat_id]:
-                    self.satellite_neighbors[sat_id].append(next_id)
-                    
-                # 向前
-                prev_num = sat_num - distance
-                if prev_num <= 0:
-                    prev_num = satellites_per_orbit + prev_num
-                prev_id = f"satellite_{orbit_id}-{prev_num}"
-                if prev_id in satellites and prev_id not in self.satellite_neighbors[sat_id]:
-                    self.satellite_neighbors[sat_id].append(prev_id)
-            
-            # 添加跨轨道邻居
-            if self.inter_orbit_links:
-                for other_orbit in range(1, self.config['fl']['num_orbits'] + 1):
-                    if other_orbit == orbit_id:
-                        continue  # 跳过同轨道
-                    
-                    # 添加相同位置的卫星
-                    other_id = f"satellite_{other_orbit}-{sat_num}"
-                    if other_id in satellites:
-                        self.satellite_neighbors[sat_id].append(other_id)
-                    
-                    # 添加相邻位置的卫星
-                    for offset in [-1, 1]:
-                        other_num = sat_num + offset
-                        if other_num <= 0:
-                            other_num = satellites_per_orbit
-                        elif other_num > satellites_per_orbit:
-                            other_num = 1
-                        
-                        neighbor_id = f"satellite_{other_orbit}-{other_num}"
-                        if neighbor_id in satellites:
-                            self.satellite_neighbors[sat_id].append(neighbor_id)
-        
-        # 打印网络统计信息
-        total_edges = sum(len(neighbors) for neighbors in self.satellite_neighbors.values())
-        avg_neighbors = total_edges / len(self.satellite_neighbors) if self.satellite_neighbors else 0
-        self.logger.info(f"卫星网络构建完成: {len(self.satellite_neighbors)} 个节点, 平均 {avg_neighbors:.2f} 个邻居")
-        
-        # 打印几个卫星的邻居示例
-        for i, sat_id in enumerate(satellites[:3]):
-            self.logger.info(f"卫星 {sat_id} 的邻居: {self.satellite_neighbors[sat_id]}")
+
 
     def train(self):
         """执行有限传播FedAvg训练过程"""
@@ -625,6 +571,11 @@ class LimitedPropagationFedAvg(FedAvgExperiment):
                 
                 # 标准化权重
                 total_samples = sum(weights)
+                if total_samples == 0:
+                    self.logger.warning(f"第 {round_num + 1} 轮没有有效的训练数据，跳过聚合")
+                    current_time = datetime.now().timestamp() + round_num * self.config['fl']['round_interval']
+                    continue
+                    
                 weights = [w/total_samples for w in weights]
                 
                 # FedAvg聚合（加权平均）

@@ -28,7 +28,7 @@ class FedProxClient(SatelliteClient):
         """重写应用模型更新方法，保存全局模型参数"""
         # 保存全局模型参数用于接近性正则化
         self.global_model_params = {
-            name: param.clone().detach().to(self.device) for name, param in model_update.items()
+            name: param.clone().detach().to('cpu') for name, param in model_update.items()
         }
         # 调用父类方法更新模型
         super().apply_model_update(model_update)
@@ -64,13 +64,14 @@ class FedProxClient(SatelliteClient):
                 if self.global_model_params:
                     for name, param in self.model.named_parameters():
                         if name in self.global_model_params:
-                            proximal_term += torch.sum((param - self.global_model_params[name])**2)
+                            global_param = self.global_model_params[name].to(self.device)
+                            proximal_term += torch.sum((param - global_param)**2)
                     
                 # 计算总损失
                 loss = task_loss + (self.mu / 2) * proximal_term
                 
                 # 记录接近性项的值，用于后续分析
-                self.last_proximal_term = proximal_term.item()
+                self.last_proximal_term = proximal_term.item() if isinstance(proximal_term, torch.Tensor) else proximal_term
                 
                 # 反向传播
                 self.optimizer.zero_grad()

@@ -1,1 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Experiment outputs — do not commit logs or result artifacts
+logs/
+comparison_results/
+experiments/results/
+*.log
+*.pkl
+
+# Robustness / sensitivity study outputs
+robustness_v2_results_*.csv
+sensitivity_*.csv
+sensitivity_*.png
+robustness_*.png
+
+# Dataset files (too large for git; see data/README.md)
+data/*.csv
+data/MachineLearningCVE/
+
+# Skyfield ephemeris cache
+*.bsp
+
+# macOS
 .DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

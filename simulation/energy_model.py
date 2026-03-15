@@ -136,7 +136,9 @@ class EnergyModel:
         config = self.get_satellite_config(sat_name)
         
         # 计算传输时间(小时)
-        transmission_time = data_size / (bandwidth * 3600)  # MB / (Mbps * s/h)
+        # data_size (MB) * 8 = Mbits
+        # bandwidth (Mbps)
+        transmission_time = (data_size * 8) / (bandwidth * 3600)  # MB * 8 / (Mbps * s/h)
         
         # 计算能量消耗
         energy = config.radio_power_tx * transmission_time

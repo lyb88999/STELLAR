@@ -230,7 +230,7 @@ class FedAvgExperiment(BaselineExperiment):
         
         # 检查每个卫星是否可见任何地面站
         for sat_id in self.clients.keys():
-            for station_id in ['station_0', 'station_1', 'station_2']:
+            for station_id in self.ground_stations.keys():
                 is_visible = self.network_model._check_visibility(station_id, sat_id, current_time)
                 self.logger.debug(f"检查可见性: {station_id} -> {sat_id}: {is_visible}")
                 if is_visible:

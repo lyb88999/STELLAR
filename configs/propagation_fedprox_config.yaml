@@ -1,24 +1,25 @@
-# configs/propagation_fedprox_config.yaml
+# Propagation-constrained FedProx configuration
+
+# Federated learning configuration
 fl:
   num_rounds: 20
-  round_interval: 3600  # 1小时
+  round_interval: 600
   num_satellites: 66
   num_orbits: 6
   satellites_per_orbit: 11
 
+# Data configuration
+# Set csv_path to your local traffic dataset CSV file
 data:
-  dataset: "real_traffic"  # 使用真实网络流量数据
-  csv_path: "/Users/lyb/Downloads/gitProjects/STI/merged_traffic_data_20250305_111338.csv"
-  #total_samples: 100000
-  #test_samples: 10000
-  test_size: 0.2  # 测试集比例
+  dataset: "real_traffic"
+  csv_path: "data/traffic_data.csv"   # <-- update this path
+  test_size: 0.2
   iid: true
   alpha: 0.5
-  dirichlet_alpha: 0.5
-  # mean_samples_per_satellite: 1000
   region_similarity: false
   overlap_ratio: 0.5
 
+# Client configuration
 client:
   local_epochs: 5
   batch_size: 32
@@ -28,32 +29,35 @@ client:
   optimizer: sgd
   weight_decay: 0.0001
 
+# Aggregation configuration
 aggregation:
   min_updates: 2
   max_staleness: 2
   timeout: 600.0
   weighted_average: true
 
+# Model configuration
 model:
   hidden_dim: 64
 
+# Network configuration
 network:
   tle_file: "configs/Iridium_TLEs.txt"
   max_distance: 4000.0  # km
 
+# Energy model configuration
 energy:
-   config_file: "configs/energy_config.yaml"
+  config_file: "configs/energy_config.yaml"
 
-
-# FedProx特有参数
+# FedProx-specific parameter
 fedprox:
-  mu: 0.1 # 接近性项系数
+  mu: 0.1                    # Proximal term coefficient
 
-# 传播相关参数
+# Propagation configuration
 propagation:
-  hops: 2  # 传播跳数
-  max_satellites: 24  # 设置为与您的方法相近的卫星数
-  intra_orbit_links: true  # 启用轨道内链接
-  inter_orbit_links: true  # 启用轨道间链接
-  link_reliability: 0.95  # 链接可靠性
-  energy_per_hop: 0.05  # 每跳能耗
+  hops: 2                    # Maximum propagation hops
+  max_satellites: 24         # Maximum satellites in propagation range
+  intra_orbit_links: true    # Allow intra-orbit ISLs
+  inter_orbit_links: true    # Allow inter-orbit ISLs
+  link_reliability: 0.95     # ISL reliability probability
+  energy_per_hop: 0.05       # Energy cost per hop (Wh)

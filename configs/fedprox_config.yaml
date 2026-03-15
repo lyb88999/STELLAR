@@ -1,46 +1,48 @@
-# 网络配置
+# FedProx baseline configuration
+
+# Network configuration
 network:
   tle_file: "configs/Iridium_TLEs.txt"
-  max_distance: 4000.0  # km
+  max_distance: 4000.0  # Maximum ISL distance (km)
 
-# 能源配置
+# Energy model configuration
 energy:
   config_file: "configs/energy_config.yaml"
-  
-# 联邦学习配置
+
+# Federated learning configuration
 fl:
-  num_satellites: 66  # 总卫星数量
-  satellites_per_orbit: 11  # 每轨道卫星数
-  num_orbits: 6  # 轨道数量
-  num_rounds: 20
-  round_interval: 300  # 每轮训练间隔(秒)
-  
-# FedAvg特定配置 - 保留以兼容基类
+  num_satellites: 66         # Total number of satellites
+  satellites_per_orbit: 11   # Satellites per orbital plane
+  num_orbits: 6              # Number of orbital planes
+  num_rounds: 20             # Number of FL communication rounds
+  round_interval: 300        # Simulated seconds between rounds
+
+# FedAvg participation config (required by base class)
 fedavg:
-  participation_rate: 0.8  # 每轮参与比例
+  participation_rate: 0.8
 
-# FedProx特定配置
+# FedProx-specific configuration
 fedprox:
-  mu: 0.01  # 接近性参数 - 控制正则化强度
+  mu: 0.01                   # Proximal term coefficient (regularization strength)
 
-# 数据配置
+# Data configuration
+# Set csv_path to your local traffic dataset CSV file
 data:
   dataset: "real_traffic"
-  csv_path: "/Users/lyb/Downloads/gitProjects/STI/merged_traffic_data_20250305_111338.csv"
-  # csv_path: "/Users/lyb/Downloads/gitProjects/STI/merged_traffic_data_20250305_111338.csv"
-  test_size: 0.2                     # 测试集比例
-  iid: true                         # 非IID分布更能体现FedProx优势
-  alpha: 0.3                         # Dirichlet参数较小，创造更不均衡的分布
+  csv_path: "data/traffic_data.csv"   # <-- update this path
+  test_size: 0.2             # Fraction of data for testing
+  iid: true                  # true = IID split; false = non-IID (Dirichlet)
+  alpha: 0.3                 # Dirichlet alpha (smaller = more heterogeneous)
 
-# 模型配置
+# Model configuration
 model:
   type: "traffic_classifier"
   hidden_dim: 64
   batch_size: 32
   learning_rate: 0.001
   momentum: 0.9
-  
-# 客户端配置
+
+# Client configuration
 client:
   batch_size: 32
   local_epochs: 5
@@ -49,7 +51,7 @@ client:
   compute_capacity: 1.0
   storage_capacity: 1000.0
 
-# 聚合配置
+# Aggregation configuration
 aggregation:
   min_updates: 2
   max_staleness: 300.0

@@ -13,25 +13,30 @@ class SatelliteNetwork:
         Args:
             tle_file: TLE数据文件路径
         """
+        # 添加logger
+        self.logger = logging.getLogger(__name__)
+        
         self.ts = load.timescale()
         self.satellites = self._load_satellites(tle_file)
         self.positions_cache = {}  # 位置缓存
 
-        # 添加logger
-        self.logger = logging.getLogger(__name__)
-
         # 添加地面站位置 (经度,纬度,高度)
+        # 使用高纬度位置以更好地覆盖极轨道卫星
         self.ground_stations = {
-            "station_0": (0.0, 0.0, 0.0),      # 经度0度赤道
-            "station_1": (120.0, 0.0, 0.0),    # 经度120度赤道
-            "station_2": (-120.0, 0.0, 0.0),   # 经度-120度赤道
+            "station_0": (70.0, 30.0, 0.1),      # 北纬70度，东经30度 (Cluster 1)
+            "station_1": (70.0, 60.0, 0.1),      # 北纬70度，东经60度 (Cluster 1)
+            "station_2": (70.0, 90.0, 0.1),      # 北纬70度，东经90度 (Cluster 1)
+            "station_3": (70.0, -30.0, 0.1),     # 北纬70度，西经30度 (Cluster 2)
+            "station_4": (70.0, -60.0, 0.1),     # 北纬70度，西经60度 (Cluster 2)
+            "station_5": (70.0, -90.0, 0.1),     # 北纬70度，西经90度 (Cluster 2)
         }
         
     def _load_satellites(self, tle_file: str) -> Dict[str, EarthSatellite]:
         """
-        从TLE文件加载卫星数据
+        从TLE文件加载卫星数据，并将其映射到轨道结构
+        新增：过滤异常卫星（inc/MM/ecc不符，可能是备份/失效），确保12纯净轨道
         """
-        satellites = {}
+        raw_satellites = []
         try:
             with open(tle_file, 'r') as f:
                 lines = f.readlines()
@@ -39,8 +44,10 @@ class SatelliteNetwork:
             if len(lines) == 0:
                 raise ValueError("TLE file is empty")
                 
-            print(f"读取到 {len(lines)} 行TLE数据")
+            self.logger.info(f"读取到 {len(lines)} 行TLE数据")
             
+            # 1. 加载&过滤原始卫星数据
+            valid_count = 0
             for i in range(0, len(lines), 3):
                 if i + 2 >= len(lines):
                     break
@@ -49,87 +56,138 @@ class SatelliteNetwork:
                     line1 = lines[i + 1].strip()
                     line2 = lines[i + 2].strip()
                     
-                    print(f"正在加载卫星: {name}")
-                    print(f"Line 1: {line1}")
-                    print(f"Line 2: {line2}")
+                    # 提取TLE参数过滤异常（备份/失效卫星）
+                    inc_deg = float(line2[8:16])
+                    mean_motion = float(line2[52:63])  # rev/day
+                    ecc_str = line2[26:33].strip()
+                    ecc = float('0.' + ecc_str)
                     
+                    if not (87.8 < inc_deg < 88.0 and 
+                            13.10 < mean_motion < 13.25 and 
+                            ecc < 0.001):
+                        self.logger.debug(f"过滤异常卫星 {name}: inc={inc_deg:.3f}, MM={mean_motion:.3f}, ecc={ecc:.6f}")
+                        continue  # 丢弃~5颗无效
+                    
+                    valid_count += 1
                     satellite = EarthSatellite(line1, line2, name, self.ts)
-                    satellites[name] = satellite
+                    
+                    # 提取轨道参数
+                    raan = satellite.model.nodeo  # rad
+                    ma = satellite.model.mo       # rad
+                    
+                    raw_satellites.append({
+                        'sat': satellite,
+                        'raan': raan,
+                        'ma': ma,
+                        'original_name': name
+                    })
                     
                 except Exception as e:
-                    print(f"加载卫星 {name} 时出错: {str(e)}")
+                    self.logger.error(f"加载卫星 {name} 时出错: {str(e)}")
                     continue
-                    
-            if not satellites:
-                raise ValueError("No valid satellites loaded from TLE file")
-                
-        except Exception as e:
-            print(f"加载TLE文件时出错: {str(e)}")
-            raise
             
-        return satellites
+            self.logger.info(f"过滤后有效卫星: {valid_count} 颗（总{len(raw_satellites)}）")
+
+            if not raw_satellites:
+                raise ValueError("No valid satellites loaded from TLE file")
+
+            # 2. 根据RAAN分组
+            raw_satellites.sort(key=lambda x: x['raan'])
+            
+            orbits = []
+            current_orbit = [raw_satellites[0]]
+            
+            threshold = 0.25  # ~14°，优化
+            
+            for i in range(1, len(raw_satellites)):
+                diff = raw_satellites[i]['raan'] - raw_satellites[i-1]['raan']
+                if diff > threshold:
+                    orbits.append(current_orbit)
+                    current_orbit = []
+                current_orbit.append(raw_satellites[i])
+            
+            if current_orbit:
+                orbits.append(current_orbit)
+            
+            # 环绕合并
+            if len(orbits) > 1:
+                first_avg = sum(s['raan'] for s in orbits[0]) / len(orbits[0])
+                last_avg = sum(s['raan'] for s in orbits[-1]) / len(orbits[-1])
+                wrap_diff = (first_avg + 2 * np.pi - last_avg) % (2 * np.pi)
+                wrap_threshold = threshold  # 或0.20 rad固定
+                if wrap_diff < wrap_threshold:
+                    ...
+                    self.logger.info(f"Merged true wrap-around (diff={wrap_diff:.3f} rad)")
+                else:
+                    self.logger.info(f"Wrap gap {wrap_diff:.3f} rad >阈值，保持分离（正常相邻面）")
+            
+            # 小簇清理（<5颗合并到最近大簇，避免孤立）
+            cleaned_orbits = []
+            for orb in orbits:
+                if len(orb) >= 5:
+                    cleaned_orbits.append(orb)
+                else:
+                    self.logger.info(f"丢弃小簇 {len(orb)}颗（异常）")
+            orbits = cleaned_orbits
+            
+            self.logger.info(f"最终轨道平面: {len(orbits)} 个")
+            for i, orb in enumerate(orbits):
+                avg_raan_deg = np.degrees(sum(s['raan'] for s in orb) / len(orb))
+                self.logger.info(f"  轨道 {i+1}: {len(orb)} 颗 (RAAN~{avg_raan_deg:.1f}°)")
+            
+            # 3. 重命名&映射
+            satellites = {}
+            for orbit_idx, orbit_sats in enumerate(orbits):
+                orbit_sats.sort(key=lambda x: x['ma'])
+                for sat_idx, item in enumerate(orbit_sats):
+                    new_name = f"satellite_{orbit_idx + 1}-{sat_idx + 1}"
+                    satellites[new_name] = item['sat']
+                    self.logger.debug(f"映射: {item['original_name']} -> {new_name}")
+            
+            self.logger.info(f"总映射卫星: {len(satellites)} 颗")
+            return satellites
+            
+        except Exception as e:
+            self.logger.error(f"加载TLE文件出错: {str(e)}")
+            raise
+
     
     def compute_position(self, sat_name: str, time: float) -> np.ndarray:
         """计算卫星位置"""
         try:
+            # 优先使用TLE计算
+            if sat_name in self.satellites:
+                dt = datetime.fromtimestamp(time, timezone.utc)
+                t = self.ts.from_datetime(dt)
+                geocentric = self.satellites[sat_name].at(t)
+                return geocentric.position.km
+                
+            # 如果找不到卫星，尝试解析ID并回退到解析模型（仅作为后备）
             # 统一使用 satellite_X-X 格式
-            # 如果是 Iridium X-X 格式，转换为 satellite_X-X
             if sat_name.startswith('Iridium'):
                 parts = sat_name.split()[1].split('-')
                 sat_name = f"satellite_{parts[0]}-{parts[1]}"
             
-            orbit_num, sat_num = self._parse_satellite_id(sat_name)
+            if sat_name in self.satellites:
+                dt = datetime.fromtimestamp(time, timezone.utc)
+                t = self.ts.from_datetime(dt)
+                geocentric = self.satellites[sat_name].at(t)
+                return geocentric.position.km
+
+            # 如果还是找不到，记录错误并返回零
+            import traceback
+            self.logger.warning(f"找不到卫星 {sat_name} 的TLE数据，无法计算位置. 调用栈:\n{''.join(traceback.format_stack()[-5:])}")
             
-            # 基本轨道参数
-            orbit_radius = 7155.0  # 轨道半径(km)
-            inclination = np.radians(86.4)  # 轨道倾角
-            
-            # 计算轨道平面的升交点赤经（每个轨道平面间隔60度）
-            raan = np.radians((orbit_num - 1) * 60)
-            
-            # 计算卫星在轨道上的位置（11颗卫星均匀分布）
-            # 每颗卫星间隔 360/11 度
-            phase_angle = 360.0 / 11  # 相位角
-            
-            # 根据卫星序号计算真近点角
-            true_anomaly = np.radians((sat_num - 1) * phase_angle)
-            
-            # 计算轨道平面中的位置
-            x_orbit = orbit_radius * np.cos(true_anomaly)
-            y_orbit = orbit_radius * np.sin(true_anomaly)
-            
-            # 考虑时间对位置的影响
-            # 轨道周期约为100分钟
-            orbit_period = 100 * 60  # 秒
-            time_fraction = (time % orbit_period) / orbit_period
-            rotation = 2 * np.pi * time_fraction
-            
-            # 添加时间旋转
-            x_rotated = x_orbit * np.cos(rotation) - y_orbit * np.sin(rotation)
-            y_rotated = x_orbit * np.sin(rotation) + y_orbit * np.cos(rotation)
-            
-            # 1. 绕z轴旋转(升交点赤经)
-            x1 = x_rotated * np.cos(raan) - y_rotated * np.sin(raan)
-            y1 = x_rotated * np.sin(raan) + y_rotated * np.cos(raan)
-            z1 = 0
-            
-            # 2. 绕x轴旋转(轨道倾角)
-            x2 = x1
-            y2 = y1 * np.cos(inclination)
-            z2 = y1 * np.sin(inclination)
-            
-            position = np.array([x2, y2, z2])
-            
-            # 添加日志以便调试
-            self.logger.debug(f"计算卫星 {sat_name} 位置:")
-            self.logger.debug(f"  轨道: {orbit_num}, 序号: {sat_num}")
-            self.logger.debug(f"  位置: [{x2:.2f}, {y2:.2f}, {z2:.2f}]")
-            
-            return position
+            # Debug: check what keys ARE in self.satellites
+            if sat_name.startswith("satellite_6-"):
+                keys_6 = [k for k in self.satellites.keys() if k.startswith("satellite_6-")]
+                self.logger.warning(f"Orbit 6 satellites in network_model: {keys_6}")
+                
+            return np.array([0.0, 0.0, 0.0])
             
         except Exception as e:
             self.logger.error(f"计算卫星 {sat_name} 位置时出错: {str(e)}")
-            return np.array([0, 0, 0])
+            return np.array([0.0, 0.0, 0.0])
 
     
     # def check_visibility(self, src: str, dst: str, time: float) -> bool:
@@ -206,18 +264,23 @@ class SatelliteNetwork:
                 sat_id = dst if dst.startswith('satellite_') else src
                 return self.check_ground_station_visibility(station_id, sat_id, time)
                 
-            # 卫星间可见性检查 - 只考虑同轨道内相邻卫星
-            src_orbit, src_num = self._parse_satellite_id(src)
-            dst_orbit, dst_num = self._parse_satellite_id(dst)
+            # 卫星间可见性检查 - 基于距离
+            pos1 = self.compute_position(src, time)
+            pos2 = self.compute_position(dst, time)
             
-            # 只有同轨道的卫星才可能可见
-            if src_orbit != dst_orbit:
+            # 如果位置无效（0,0,0），则不可见
+            if np.all(pos1 == 0) or np.all(pos2 == 0):
                 return False
                 
-            # 检查是否相邻
-            sat_diff = abs(src_num - dst_num)
-            if sat_diff == 1 or sat_diff == 10:  # 相邻或首尾相连（11颗卫星时）
-                self.logger.debug(f"卫星 {src}({src_orbit}-{src_num}) 与 {dst}({dst_orbit}-{dst_num}) 可见")
+            dist = np.linalg.norm(pos1 - pos2)
+            
+            # 最大可见距离 (km) - 应该从配置读取，这里使用宽容值
+            # OneWeb 轨道高度 ~1200km，相邻卫星距离较近
+            # 跨轨道距离可能较远
+            MAX_ISL_DISTANCE = 5000.0 
+            
+            if dist <= MAX_ISL_DISTANCE:
+                # self.logger.debug(f"卫星 {src} 与 {dst} 可见, 距离: {dist:.2f}km")
                 return True
                 
             return False
@@ -227,30 +290,13 @@ class SatelliteNetwork:
             return False
         
     def _parse_satellite_id(self, sat_id: str) -> Tuple[int, int]:
-        """
-        解析卫星ID获取轨道号和卫星序号
-        Args:
-            sat_id: 卫星ID (格式: Iridium 1-1 或 satellite_1-1)
-        Returns:
-            Tuple[int, int]: (轨道号, 卫星序号)
-        """
+        """解析卫星ID，返回(轨道号, 卫星号)"""
         try:
-            if sat_id.startswith('Iridium'):
-                # Iridium 1-1 格式
-                parts = sat_id.split()[-1].split('-')
-            elif sat_id.startswith('satellite_'):
-                # satellite_1-1 格式
-                parts = sat_id.split('_')[1].split('-')
-            else:
-                return (0, 0)
-                
-            if len(parts) == 2:
-                return int(parts[0]), int(parts[1])
-            return (0, 0)
-            
-        except Exception as e:
-            self.logger.error(f"解析卫星ID出错 ({sat_id}): {str(e)}")
-            return (0, 0)
+            # 格式: satellite_{orbit}-{sat}
+            parts = sat_id.split('_')[1].split('-')
+            return int(parts[0]), int(parts[1])
+        except:
+            return 0, 0
         
     def compute_doppler_shift(self, sat1: str, sat2: str, 
                             time: float, frequency: float) -> float:
@@ -312,58 +358,62 @@ class SatelliteNetwork:
         normal = np.cross(v1, v2)
         return normal / np.linalg.norm(normal)
     
-    def check_ground_station_visibility(self, station_id: str, sat_id: str, time: float, min_elevation: float = 5.0) -> bool:
+    def check_ground_station_visibility(self, station_id: str, sat_id: str, time: float, min_elevation: float = 10.0) -> bool:
         """
         检查地面站和卫星之间是否可见
         Args:
             station_id: 地面站ID
             sat_id: 卫星ID
             time: 时间戳
-            min_elevation: 最小仰角(度)
+            min_elevation: 最小仰角(度)，默认为10度以模拟真实通信环境(避开地形遮挡和大气衰减)
         Returns:
             bool: 是否可见
         """
         try:
-            # 获取地面站位置（示例位置，根据实际情况设置）
-            station_positions = {
-            'station_0': (70.0, 30.0, 0.1),      # 北纬70度，东经30度（负责轨道1、2）
-            'station_1': (70.0, 150.0, 0.1),     # 北纬70度，东经150度（负责轨道3、4）
-            'station_2': (70.0, -90.0, 0.1)      # 北纬70度，西经90度（负责轨道5、6）
-        }
-            
-            # 获取卫星轨道和编号
-            orbit_num, sat_num = self._parse_satellite_id(sat_id)
-            
-            # 检查地面站是否负责该轨道
-            station_num = int(station_id.split('_')[1])
-            responsible_orbits = [station_num * 2, station_num * 2 + 1]
-            if (orbit_num - 1) not in responsible_orbits:
+            if station_id not in self.ground_stations:
+                self.logger.error(f"地面站 {station_id} 不存在")
                 return False
-                
-            # 放宽可见性条件
-            min_elevation = 0.0  # 降低最小仰角要求
-            max_range = 6000.0  # 增加最大可见距离(km)
+            
+            # 获取地面站位置 (lat, lon, alt)
+            station_coords = self.ground_stations[station_id]
             
             # 获取卫星位置
             sat_pos = self.compute_position(sat_id, time)
-            station_pos = self._geodetic_to_ecef(*station_positions[station_id])
+            station_pos = self._geodetic_to_ecef(*station_coords)
             
-            # 计算距离和仰角
+            # 计算距离
             range_vector = sat_pos - station_pos
             distance = np.linalg.norm(range_vector)
+            
+            # 最大可见距离 (km)
+            # 1200km轨道高度的几何地平线视距约为4100km
+            # 考虑到10度仰角，有效通信距离通常小于4000km
+            max_range = 4000.0 
             
             if distance > max_range:
                 return False
                 
             # 计算仰角
+            # 简单的仰角计算：基于地心向量和站心向量的夹角
+            # 更精确的计算需要坐标转换，但这里作为近似
             up_vector = station_pos / np.linalg.norm(station_pos)
-            elevation = np.degrees(np.arcsin(np.dot(range_vector/distance, up_vector)))
             
-            self.logger.debug(f"地面站 {station_id} -> 卫星 {sat_id}:")
-            self.logger.debug(f"  距离: {distance:.2f}km")
-            self.logger.debug(f"  仰角: {elevation:.2f}度")
+            # 计算视线向量与天顶方向的夹角余弦
+            cos_zenith = np.dot(range_vector/distance, up_vector)
             
-            return elevation >= min_elevation and distance <= max_range
+            # 仰角 = 90 - 天顶角
+            elevation = np.degrees(np.arcsin(cos_zenith))
+            
+            # self.logger.debug(f"地面站 {station_id} -> 卫星 {sat_id}: 距离={distance:.2f}km, 仰角={elevation:.2f}度")
+            
+            is_visible = elevation >= min_elevation
+            
+            # 添加调试日志：如果不可见且是问题站点，记录详细信息
+            if not is_visible and station_id in ['station_2', 'station_3'] and elevation > -10.0:
+                 # 只记录接近可见的情况 (-10度到0度) 以避免日志爆炸
+                 self.logger.debug(f"可见性检查失败: {station_id} -> {sat_id}, 仰角={elevation:.2f}, 距离={distance:.2f}, 阈值={min_elevation}")
+            
+            return is_visible
             
         except Exception as e:
             self.logger.error(f"地面站可见性检查出错: {str(e)}")

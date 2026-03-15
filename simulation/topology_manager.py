@@ -24,6 +24,8 @@ class Group:
     orbit_plane: float  # 轨道平面角度
     avg_connectivity: float
 
+import threading
+
 class TopologyManager:
     def __init__(self, network_model, comm_scheduler, energy_model):
         """
@@ -43,6 +45,7 @@ class TopologyManager:
         self.link_states = {}  # 链路状态
         self.ground_station_links = {}  # 地面站连接
         self.logger = logging.getLogger(__name__)
+        self.lock = threading.Lock()  # 添加线程锁
         
     def update_topology(self, current_time: float, window: float = 300):
         """
@@ -51,60 +54,86 @@ class TopologyManager:
             current_time: 当前时间戳
             window: 预测窗口大小(秒)
         """
-        print("\n=== 开始更新拓扑 ===")
-        satellites = list(self.network_model.satellites.keys())
-        n_sats = len(satellites)
-        print(f"卫星总数: {n_sats}")
-        
-        # 构建连接矩阵
-        connectivity = np.zeros((n_sats, n_sats))
-        quality_matrix = np.zeros((n_sats, n_sats))
-        
-        # 计算采样点
-        sample_times = np.linspace(current_time, current_time + window, 5)
-        print(f"采样时间点数量: {len(sample_times)}")
-        
-        # 更新链路状态
-        visible_links = 0
-        for i, sat1 in enumerate(satellites):
-            pos1 = self.network_model.compute_position(sat1, current_time)
-            print(f"\n检查卫星 {sat1} 的连接 (位置: {pos1})")
+        with self.lock:
+            print("\n=== 开始更新拓扑 ===")
+            satellites = list(self.network_model.satellites.keys())
+            n_sats = len(satellites)
+            print(f"卫星总数: {n_sats}")
             
-            for j, sat2 in enumerate(satellites[i+1:], i+1):
-                pos2 = self.network_model.compute_position(sat2, current_time)
-                distance = np.linalg.norm(pos2 - pos1)
-                print(f"  与 {sat2} 的距离: {distance:.2f}km")
+            # 构建连接矩阵
+            connectivity = np.zeros((n_sats, n_sats))
+            quality_matrix = np.zeros((n_sats, n_sats))
+            
+            # 初始化可见链路计数
+            visible_links = 0
+            
+            # 计算采样点
+            sample_times = np.linspace(current_time, current_time + window, 5)
+            
+            # 1. 预计算所有卫星在所有采样点的位置
+            # positions_over_time: (n_samples, n_sats, 3)
+            positions_over_time = []
+            for t in sample_times:
+                positions_t = []
+                for sat in satellites:
+                    pos = self.network_model.compute_position(sat, t)
+                    positions_t.append(pos)
+                positions_over_time.append(positions_t)
+            
+            positions_over_time = np.array(positions_over_time)
+            
+            # 2. 向量化计算所有时刻的距离矩阵
+            # dist_matrices: (n_samples, n_sats, n_sats)
+            n_samples = len(sample_times)
+            dist_matrices = np.zeros((n_samples, n_sats, n_sats))
+            
+            for k in range(n_samples):
+                dist_matrices[k] = squareform(pdist(positions_over_time[k]))
                 
-                # 检查多个时间点的可见性
-                visible_count = 0
-                quality_sum = 0.0
+            # 3. 计算可见性矩阵 (n_samples, n_sats, n_sats)
+            # 假设可见性仅由距离决定 (简化模型，忽略地球遮挡，因为在同轨道或相邻轨道通常满足)
+            # 如果需要地球遮挡检查，仍然需要调用 _check_visibility，但我们可以先用距离过滤
+            MAX_DIST = 6000.0
+            visibility_matrices = (dist_matrices < MAX_DIST) & (dist_matrices > 0)
+            
+            # 4. 聚合所有时间点的可见性
+            # visible_counts: (n_sats, n_sats) - 每个对在多少个时间点可见
+            visible_counts = np.sum(visibility_matrices, axis=0)
+            
+            # 5. 计算平均距离用于质量评估
+            # 只计算可见时刻的平均距离
+            # 为了避免除以0，我们先计算总距离，然后除以可见次数
+            total_distances = np.sum(dist_matrices * visibility_matrices, axis=0)
+            # 避免除以0警告
+            with np.errstate(divide='ignore', invalid='ignore'):
+                avg_distances = total_distances / visible_counts
+                avg_distances[visible_counts == 0] = float('inf')
                 
-                for t in sample_times:
-                    if self.network_model._check_visibility(sat1, sat2, t):
-                        visible_count += 1
-                        pos1_t = self.network_model.compute_position(sat1, t)
-                        pos2_t = self.network_model.compute_position(sat2, t)
-                        distance = np.linalg.norm(pos2_t - pos1_t)
-                        quality = max(0, 1 - distance/6000.0)
-                        quality_sum += quality
-                
-                if visible_count > 0:
+            # 6. 筛选出可见链路 (至少在一个时间点可见)
+            # 只处理上三角矩阵以避免重复
+            rows, cols = np.triu_indices(n_sats, k=1)
+            
+            for i, j in zip(rows, cols):
+                count = visible_counts[i, j]
+                if count > 0:
+                    sat1 = satellites[i]
+                    sat2 = satellites[j]
+                    distance = avg_distances[i, j]
+                    
                     visible_links += 1
                     connectivity[i][j] = connectivity[j][i] = 1
                     
-                    # 计算基础质量（根据距离）
-                    base_quality = max(0.1, 1 - distance/8000.0)  # 确保最小质量为0.1
+                    # 计算基础质量
+                    base_quality = max(0.1, 1 - distance/8000.0)
                     
                     # 根据可见时间点数调整质量
-                    visibility_factor = visible_count / len(sample_times)
+                    visibility_factor = count / n_samples
                     quality = base_quality * visibility_factor
                     
                     quality_matrix[i][j] = quality_matrix[j][i] = quality
                     
-                    print(f"    可见! 可见时间点数: {visible_count}, 平均质量: {quality:.3f}")
-                    
-                    delay = self._estimate_link_delay(sat1, sat2, current_time)
-                    bandwidth = 100.0 * quality  # 最大带宽100Mbps
+                    delay = distance / 299.792458 + 15.0 # 简化延迟计算: 距离/光速 + 处理延迟
+                    bandwidth = 100.0 * quality
                     
                     self.link_states[(sat1, sat2)] = Link(
                         source=sat1,
@@ -113,33 +142,31 @@ class TopologyManager:
                         delay=delay,
                         bandwidth=bandwidth
                     )
-                else:
-                    print(f"    不可见")
-        
-        print(f"\n总计发现可见链路数: {visible_links}")
-        print("连接矩阵:")
-        print(connectivity)
-        
-        # 更新拓扑图
-        self.topology_graph.clear()
-        for i, sat1 in enumerate(satellites):
-            for j, sat2 in enumerate(satellites):
-                if connectivity[i][j] > 0:
-                    self.topology_graph.add_edge(
-                        sat1, sat2,
-                        weight=1/quality_matrix[i][j]
-                    )
-        
-        print(f"拓扑图边数: {self.topology_graph.number_of_edges()}")
-        
-        # 更新分组
-        self._update_groups(satellites, connectivity, quality_matrix)
+            
+            print(f"\n总计发现可见链路数: {visible_links}")
+            print("连接矩阵:")
+            print(connectivity)
+            
+            # 更新拓扑图
+            self.topology_graph.clear()
+            for i, sat1 in enumerate(satellites):
+                for j, sat2 in enumerate(satellites):
+                    if connectivity[i][j] > 0:
+                        self.topology_graph.add_edge(
+                            sat1, sat2,
+                            weight=1/quality_matrix[i][j]
+                        )
+            
+            print(f"拓扑图边数: {self.topology_graph.number_of_edges()}")
+            
+            # 更新分组
+            self._update_groups(satellites, connectivity, quality_matrix)
 
-        # 更新地面站连接
-        self._update_ground_station_links(current_time)
-        
-        # 更新路由表
-        self._update_routing_table()
+            # 更新地面站连接
+            self._update_ground_station_links(current_time)
+            
+            # 更新路由表
+            self._update_routing_table()
         
     def _estimate_link_delay(self, sat1: str, sat2: str, time: float) -> float:
         """估计链路延迟(ms)"""

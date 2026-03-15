@@ -101,12 +101,12 @@ class BaselineExperiment:
             consistency_threshold=0.8,
             max_version_diff=2,
             aggregation_timeout=1800.0,
-            validation_required=True
+            validation_required=False
         )
         self.global_aggregator = GlobalAggregator(global_config)
         
         # 为全局聚合器添加地面站
-        for station_id in ['station_0', 'station_1', 'station_2']:
+        for station_id in self.network_model.ground_stations:
             self.global_aggregator.add_ground_station(station_id, 1.0)
         self.visualizer = Visualization()
         
@@ -186,6 +186,33 @@ class BaselineExperiment:
         """初始化系统组件"""
         # 网络组件
         self.network_model = SatelliteNetwork(self.config['network']['tle_file'])
+        
+        # 自动检测轨道和卫星数量
+        max_orbit = 0
+        max_sat = 0
+        for name in self.network_model.satellites:
+            if name.startswith("satellite_"):
+                try:
+                    parts = name.split('_')[1].split('-')
+                    orbit = int(parts[0])
+                    sat = int(parts[1])
+                    max_orbit = max(max_orbit, orbit)
+                    max_sat = max(max_sat, sat)
+                except (IndexError, ValueError):
+                    continue
+        
+        if max_orbit > 0 and max_sat > 0:
+            self.logger.info(f"自动检测到网络结构: {max_orbit} 个轨道, 最大每轨道 {max_sat} 颗卫星")
+            self.config['fl']['num_orbits'] = max_orbit
+            self.config['fl']['satellites_per_orbit'] = max_sat
+            
+            # 同时更新总卫星数
+            total_sats = len([s for s in self.network_model.satellites if s.startswith("satellite_")])
+            self.config['fl']['num_satellites'] = total_sats
+            self.logger.info(f"自动检测到总卫星数: {total_sats}")
+        else:
+            self.logger.warning("无法自动检测网络结构，使用配置文件中的默认值")
+
         self.comm_scheduler = CommunicationScheduler(self.network_model)
         self.energy_model = EnergyModel(self.network_model, self.config['energy']['config_file'])
         self.topology_manager = TopologyManager(
@@ -200,10 +227,23 @@ class BaselineExperiment:
             from fl_core.models.real_traffic_model import RealTrafficModel
             from data_simulator.real_traffic_generator import RealTrafficGenerator
             self.data_generator = RealTrafficGenerator(
-            num_satellites=self.config['fl']['num_satellites'],
-            num_orbits=self.config['fl']['num_orbits'],
-            satellites_per_orbit=self.config['fl']['satellites_per_orbit']
-        )
+                num_satellites=self.config['fl']['num_satellites'],
+                num_orbits=self.config['fl']['num_orbits'],
+                satellites_per_orbit=self.config['fl']['satellites_per_orbit']
+            )
+            csv_path = self.config['data'].get('csv_path', 'data/traffic_data.csv')
+            feature_dim, num_classes = self.data_generator.load_and_preprocess_data(csv_path)
+            self.config['model']['feature_dim'] = feature_dim
+            self.config['model']['num_classes'] = num_classes
+        elif self.config['data'].get('dataset') == 'cicids2017':
+            from fl_core.models.real_traffic_model import RealTrafficModel
+            from data_simulator.cicids2017_generator import CICIDS2017Generator
+            self.logger.info("Using CICIDS2017 Dataset Generator")
+            self.data_generator = CICIDS2017Generator(
+                num_satellites=self.config['fl']['num_satellites'],
+                num_orbits=self.config['fl']['num_orbits'],
+                satellites_per_orbit=self.config['fl']['satellites_per_orbit']
+            )
             # 加载单个CSV文件（从配置中获取路径）
             csv_path = self.config['data'].get('csv_path', 'merged_traffic.csv')
             feature_dim, num_classes = self.data_generator.load_and_preprocess_data(csv_path)
@@ -242,6 +282,13 @@ class BaselineExperiment:
                 num_classes=num_classes
             )
             self.logger.info(f"创建RealTrafficModel: 输入维度={feature_dim}, 类别数={num_classes}")
+        elif dataset_type == 'cicids2017':
+            self.model = RealTrafficModel(
+                input_dim=feature_dim,
+                hidden_dim=self.config['model'].get('hidden_dim', 64),
+                num_classes=num_classes
+            )
+            self.logger.info(f"创建RealTrafficModel(IDS): 输入维度={feature_dim}, 类别数={num_classes}")
         elif dataset_type == 'mnist':
             self.model = MNISTModel()
         elif dataset_type == 'network_traffic':
@@ -292,19 +339,6 @@ class BaselineExperiment:
     #         total_samples=self.config['data']['total_samples'],
     #         dirichlet_alpha=self.config['data']['dirichlet_alpha'],
     #         mean_samples_per_satellite=self.config['data']['mean_samples_per_satellite'],
-    #         num_satellites=total_satellites  # 确保只生成66个数据集
-    #     )
-        
-    #     # 为每个卫星分配数据集
-    #     dataset_idx = 0
-    #     for orbit_num in range(1, 7):  # 6个轨道
-    #         for sat_num in range(1, 12):  # 每轨道11颗卫星
-    #             sat_id = f"satellite_{orbit_num}-{sat_num}"
-    #             if dataset_idx < len(all_datasets):
-    #                 self.satellite_datasets[sat_id] = list(all_datasets.values())[dataset_idx]
-    #                 dataset_idx += 1
-        
-    #     # 生成测试数据
     #     self.test_dataset = self.data_generator.generate_test_data(
     #         self.config['data']['test_samples']
     #     )
@@ -317,9 +351,13 @@ class BaselineExperiment:
 
     def prepare_data(self):
         """准备训练数据"""
-        if self.config['data'].get('dataset') == 'real_traffic':
-            self.logger.info("开始准备真实网络流量数据")
+        if self.config['data'].get('dataset') in ['real_traffic', 'cicids2017']:
+            self.logger.info(f"开始准备真实网络流量数据 ({self.config['data'].get('dataset')})")
             
+            # 获取所有有效的卫星ID
+            satellite_ids = [s for s in self.network_model.satellites.keys() if s.startswith("satellite_")]
+            self.logger.info(f"准备为 {len(satellite_ids)} 个卫星生成数据")
+
             # 检查是否启用区域相似性
             region_similarity = self.config['data'].get('region_similarity', False)
 
@@ -327,15 +365,18 @@ class BaselineExperiment:
                 self.logger.info("启用区域相似性")
                 overlap_ratio = self.config['data'].get('overlap_ratio', 0.5)
                 self.satellite_datasets = self.data_generator.generate_region_similar_data(
-                iid=self.config['data'].get('iid', False),
-                alpha=self.config['data'].get('alpha', 1.0),
-                overlap_ratio=overlap_ratio)
+                    iid=self.config['data'].get('iid', False),
+                    alpha=self.config['data'].get('alpha', 1.0),
+                    overlap_ratio=overlap_ratio,
+                    satellite_ids=satellite_ids
+                )
             else:
                 self.logger.info("未启用区域相似性")
                 # 使用IID或非IID分布分配给卫星
                 self.satellite_datasets = self.data_generator.generate_data(
                     iid=self.config['data'].get('iid', True),            # 是否使用IID分布
-                    alpha=self.config['data'].get('alpha', 1.0)          # Dirichlet参数(仅在non-iid时使用)
+                    alpha=self.config['data'].get('alpha', 1.0),         # Dirichlet参数(仅在non-iid时使用)
+                    satellite_ids=satellite_ids
                 )
             
             # 获取测试数据集
@@ -409,8 +450,13 @@ class BaselineExperiment:
             
             # 为每个卫星分配数据集
             dataset_idx = 0
-            for orbit_num in range(1, 7):  # 6个轨道
-                for sat_num in range(1, 12):  # 每轨道11颗卫星
+            # 为每个卫星分配数据集
+            dataset_idx = 0
+            num_orbits = self.config['fl']['num_orbits']
+            sats_per_orbit = self.config['fl']['satellites_per_orbit']
+            
+            for orbit_num in range(1, num_orbits + 1):
+                for sat_num in range(1, sats_per_orbit + 1):
                     sat_id = f"satellite_{orbit_num}-{sat_num}"
                     if dataset_idx < len(all_datasets):
                         self.satellite_datasets[sat_id] = list(all_datasets.values())[dataset_idx]
@@ -435,19 +481,41 @@ class BaselineExperiment:
 
         
         # 为每个轨道创建卫星
-        for orbit in range(1, 7):  # 6个轨道
-            for sat in range(1, 12):  # 每轨道11颗卫星
+        num_orbits = self.config['fl']['num_orbits']
+        sats_per_orbit = self.config['fl']['satellites_per_orbit']
+        
+        for orbit in range(1, num_orbits + 1):
+            for sat in range(1, sats_per_orbit + 1):
                 sat_id = f"satellite_{orbit}-{sat}"
-                # 创建客户端
-                if self.config['data'].get('dataset') == 'real_traffic':
-                    from fl_core.models.real_traffic_model import RealTrafficModel
+                
+                # 关键修复: 检查卫星是否存在于网络模型中
+                if sat_id not in self.network_model.satellites:
+                    # self.logger.warning(f"卫星 {sat_id} 不在网络模型中，跳过创建客户端")
+                    continue
                     
-                    # 使用与全局模型相同的参数创建新实例
-                    model_copy = RealTrafficModel(
-                        input_dim=self.config['model']['feature_dim'],
-                        hidden_dim=self.config['model'].get('hidden_dim', 64),
-                        num_classes=self.config['model'].get('num_classes', 2)
-                    )
+                # 创建客户端
+                dataset_name = self.config['data'].get('dataset')
+                # Check if hybrid model is requested via config
+                model_type = self.config['model'].get('type', 'traffic_classifier')
+                
+                self.logger.info(f"Setup client {sat_id} for dataset: {dataset_name}, model_type: {model_type}")
+                
+                if dataset_name in ['real_traffic', 'cicids2017']:
+                    if model_type == 'hybrid_traffic_classifier':
+                        from fl_core.models.hybrid_traffic_model import HybridTrafficModel
+                        model_copy = HybridTrafficModel(
+                            input_dim=self.config['model']['feature_dim'],
+                            hidden_dim=self.config['model'].get('hidden_dim', 64), # unused by hybrid but kept for compatibility
+                            num_classes=self.config['model'].get('num_classes', 1) # Hybrid classifier out is 1
+                        )
+                    else:
+                        from fl_core.models.real_traffic_model import RealTrafficModel
+                        # 使用与全局模型相同的参数创建新实例
+                        model_copy = RealTrafficModel(
+                            input_dim=self.config['model']['feature_dim'],
+                            hidden_dim=self.config['model'].get('hidden_dim', 64),
+                            num_classes=self.config['model'].get('num_classes', 2)
+                        )
                     
                     # 加载全局模型参数
                     model_copy.load_state_dict(self.model.state_dict())
@@ -521,7 +589,12 @@ class BaselineExperiment:
 
     def setup_ground_stations(self):
         """初始化地面站"""
-        for i in range(3):
+        num_stations = len(self.network_model.ground_stations)
+        num_orbits = self.config['fl']['num_orbits']
+        sats_per_orbit = self.config['fl']['satellites_per_orbit']
+        
+        # 1. 初始化所有地面站
+        for i, station_id in enumerate(self.network_model.ground_stations.keys()):
             ground_station_config = GroundStationConfig(
                 bandwidth_limit=1000.0,
                 storage_limit=10000.0,
@@ -535,16 +608,80 @@ class BaselineExperiment:
             )
             
             station = GroundStationAggregator(ground_station_config)
-            station.responsible_orbits = [i*2, i*2+1]  # 每个地面站负责两个轨道
+            station.responsible_orbits = [] # 初始化为空列表
+            self.ground_stations[station_id] = station
             
-            # 为每个负责的轨道设置权重
-            for orbit_id in station.responsible_orbits:
-                for sat_num in range(1, 12):  # 每个轨道11颗卫星
-                    sat_name = f"satellite_{orbit_id+1}-{sat_num}"
-                    station.add_orbit(sat_name, 1.0)
+        # 2. 动态分配轨道给最近的地面站
+        self.logger.info("开始动态分配轨道给地面站...")
+        
+        # 获取地面站经度
+        station_longitudes = {}
+        for station_id, coords in self.network_model.ground_stations.items():
+            # coords is (lat, lon, alt)
+            lon = coords[1]
+            # 规范化到 [0, 360)
+            if lon < 0:
+                lon += 360
+            station_longitudes[station_id] = lon
+            
+        for orbit_id in range(num_orbits):
+            # 获取轨道的一个代表卫星来计算RAAN
+            # 尝试找到该轨道存在的第一个卫星
+            rep_sat = None
+            for i in range(1, sats_per_orbit + 1):
+                sat_name = f"satellite_{orbit_id+1}-{i}"
+                if sat_name in self.network_model.satellites:
+                    rep_sat = self.network_model.satellites[sat_name]
+                    break
+            
+            if rep_sat is None:
+                self.logger.warning(f"轨道 {orbit_id} 没有找到任何卫星，跳过分配")
+                continue
                 
-            self.ground_stations[f"station_{i}"] = station
-            self.logger.info(f"地面站 {i} 初始化完成: 负责轨道={station.responsible_orbits}")
+            # 获取RAAN (Right Ascension of Ascending Node)
+            # Skyfield/sgp4 model.nodeo is in radians
+            # Convert to degrees [0, 360)
+            import math
+            raan_rad = rep_sat.model.nodeo
+            raan_deg = math.degrees(raan_rad) % 360
+            
+            # 找到经度最接近的地面站
+            best_station = None
+            min_diff = float('inf')
+            
+            # self.logger.info(f"轨道 {orbit_id} RAAN: {raan_deg:.2f}°")
+            
+            for station_id, station_lon in station_longitudes.items():
+                # 计算环形距离
+                diff = abs(station_lon - raan_deg)
+                if diff > 180:
+                    diff = 360 - diff
+                
+                # self.logger.debug(f"  -> 地面站 {station_id} (Lon={station_lon:.1f}°): 距离={diff:.1f}°")
+                
+                if diff < min_diff:
+                    min_diff = diff
+                    best_station = station_id
+            
+            if best_station:
+                self.ground_stations[best_station].responsible_orbits.append(orbit_id)
+                self.logger.info(f"轨道 {orbit_id} (RAAN={raan_deg:.1f}°) 分配给 {best_station} (Lon={station_longitudes[best_station]:.1f}°, 距离={min_diff:.1f}°)")
+            else:
+                self.logger.error(f"无法为轨道 {orbit_id} 分配地面站")
+
+        # 3. 为每个地面站添加负责的卫星
+        for station_id, station in self.ground_stations.items():
+            if not station.responsible_orbits:
+                self.logger.warning(f"地面站 {station_id} 没有分配到任何轨道!")
+            
+            for orbit_id in station.responsible_orbits:
+                for sat_num in range(1, sats_per_orbit + 1):
+                    sat_name = f"satellite_{orbit_id+1}-{sat_num}"
+                    # 只有当卫星存在时才添加
+                    if sat_name in self.clients:
+                        station.add_orbit(sat_name, 1.0)
+            
+            self.logger.info(f"地面站 {station_id} 初始化完成: 负责轨道={station.responsible_orbits}")
         
     def train(self):
         # 初始化记录列表 - 扩展为包含所有分类指标
@@ -650,8 +787,8 @@ class BaselineExperiment:
                         except Exception as e:
                             self.logger.error(f"地面站 {station_id} 聚合出错: {str(e)}")
 
-                # 全局聚合
-                if len(station_results) == len(self.ground_stations):
+                # 只要有至少一个地面站完成聚合，就可以进行全局聚合
+                if len(station_results) >= 1:
                     self.logger.info("\n=== 全局聚合阶段 ===")
                     success = self._perform_global_aggregation(round_num)
                     
@@ -696,21 +833,41 @@ class BaselineExperiment:
                             self.logger.info(f"F1值未提升，已经 {rounds_without_improvement} 轮没有改进")
 
                         # 检查是否满足停止条件
-                        if round_num + 1 >= min_rounds:
+                        early_stopping_enabled = self.config.get('early_stopping', {}).get('enabled', False)
+                        if hasattr(self, 'disable_early_stopping') and self.disable_early_stopping:
+                            early_stopping_enabled = False
+                            
+                        if early_stopping_enabled and round_num + 1 >= min_rounds:
                             if current_f1 >= f1_threshold:
                                 self.logger.info(f"达到目标F1值 {current_f1:.2f}%，停止训练")
                                 break
                             elif rounds_without_improvement >= max_rounds_without_improvement:
                                 self.logger.info(f"连续 {max_rounds_without_improvement} 轮F1值未提升，停止训练")
                                 break
-
-                        current_time += self.config['fl']['round_interval']    
                     else:
                         self.logger.warning("全局聚合失败")
                 else:
                     self.logger.warning(f"只有 {len(station_results)}/{len(self.ground_stations)} 个地面站完成聚合，跳过全局聚合")
+                    # 即使失败也要填充数据，保持列表长度一致
+                    accuracies.append(0)
+                    losses.append(0)
+                    precision_macros.append(0)
+                    recall_macros.append(0)
+                    f1_macros.append(0)
+                    precision_weighteds.append(0)
+                    recall_weighteds.append(0)
+                    f1_weighteds.append(0)
             else:
                 self.logger.warning("所有轨道训练失败，跳过聚合阶段")
+                # 即使失败也要填充数据，保持列表长度一致
+                accuracies.append(0)
+                losses.append(0)
+                precision_macros.append(0)
+                recall_macros.append(0)
+                f1_macros.append(0)
+                precision_weighteds.append(0)
+                recall_weighteds.append(0)
+                f1_weighteds.append(0)
 
             current_time += self.config['fl']['round_interval']
             
@@ -1106,7 +1263,7 @@ class BaselineExperiment:
 
             if not coordinator:
                 self.logger.warning(f"轨道 {orbit_id} 在指定时间内未找到可见卫星")
-                return False
+                return False, orbit_stats
 
             self.logger.info(f"轨道 {orbit_id} 选择 {coordinator} 作为协调者")
 
@@ -1285,14 +1442,14 @@ class BaselineExperiment:
             bool: 聚合是否成功
         """
         try:
-            self.logger.info(f"\n=== 地面站 {station_id} 聚合开始 ===")
+            self.logger.debug(f"\n=== 地面站 {station_id} 聚合开始 ===")
             # 检查负责的轨道
             responsible_orbits = station.responsible_orbits
-            self.logger.info(f"地面站 {station_id} 负责轨道: {responsible_orbits}")
+            self.logger.debug(f"地面站 {station_id} 负责轨道: {responsible_orbits}")
             
             # 检查收到的更新
             updates = station.pending_updates.get(self.current_round, {})
-            self.logger.info(f"收到的轨道更新: {list(updates.keys())}")
+            self.logger.debug(f"收到的轨道更新: {list(updates.keys())}")
 
             # 获取聚合结果
             aggregated_update = station.get_aggregated_update(self.current_round)
@@ -1328,8 +1485,9 @@ class BaselineExperiment:
         """获取轨道内的所有卫星"""
         satellites = []
         orbit_num = orbit_id + 1  # 轨道编号从1开始
-        # 每个轨道11颗卫星
-        for i in range(1, 12):
+        sats_per_orbit = self.config['fl']['satellites_per_orbit']
+        
+        for i in range(1, sats_per_orbit + 1):
             sat_name = f"satellite_{orbit_num}-{i}"  # 使用 satellite_X-X 格式
             if sat_name in self.clients:
                 satellites.append(sat_name)
@@ -1443,6 +1601,11 @@ class BaselineExperiment:
                 
     #         self.logger.info(f"参与全局聚合的地面站数量: {len(station_updates)}")
             
+    #         # 强制触发聚合
+    #         if not self.global_aggregator.force_aggregate(round_num):
+    #             self.logger.warning("强制聚合失败")
+    #             return False
+
     #         # 获取全局聚合结果
     #         global_update = self.global_aggregator.get_aggregated_update(round_num)
             
@@ -1488,7 +1651,14 @@ class BaselineExperiment:
         try:
             orbit_accuracies = self.evaluate_orbit_models()
             self.logger.info("\n=== 全局聚合阶段 ===")
-            global_update = self.global_aggregator.get_aggregated_update(round_num)
+            
+            # 强制触发聚合
+            if not self.global_aggregator.force_aggregate(round_num):
+                self.logger.warning("强制聚合失败")
+                return False
+
+            # 由于 force_aggregate 已经消耗了 pending_updates，我们需要从 model_versions 获取结果
+            global_update = self.global_aggregator.get_current_model()
             
             if global_update:
                 self.logger.info(f"完成第 {round_num + 1} 轮全局聚合")
@@ -1525,13 +1695,26 @@ class BaselineExperiment:
                 self.logger.info(f"成功更新了 {update_success}/{len(self.clients)} 个卫星的模型")
                 
                 # 评估全局模型
-                global_accuracy = self.evaluate()
+                # 评估全局模型
+                global_metrics = self.evaluate()
+                if isinstance(global_metrics, dict):
+                    global_accuracy = global_metrics.get('accuracy', 0)
+                else:
+                    global_accuracy = global_metrics
+                    
                 self.logger.info(f"第 {round_num + 1} 轮全局准确率: {global_accuracy:.4f}")
+                # 对比轨道模型和全局模型
                 # 对比轨道模型和全局模型
                 self.logger.info("\n=== 轨道模型 vs 全局模型性能对比 ===")
                 for orbit_id, accuracy in orbit_accuracies.items():
-                    diff = accuracy - global_accuracy
-                    self.logger.info(f"轨道 {orbit_id}: {accuracy:.2f}% (与全局差异: {diff:+.2f}%)")
+                    # 确保 accuracy 也是 float
+                    if isinstance(accuracy, dict):
+                        acc_val = accuracy.get('accuracy', 0)
+                    else:
+                        acc_val = accuracy
+                        
+                    diff = acc_val - global_accuracy
+                    self.logger.info(f"轨道 {orbit_id}: {acc_val:.2f}% (与全局差异: {diff:+.2f}%)")
                 return True
             else:
                 self.logger.warning("全局聚合失败")
@@ -1621,8 +1804,12 @@ class BaselineExperiment:
             shuffle=False
         )
         
+        # 获取模型设备
+        device = next(self.model.parameters()).device
+        
         with torch.no_grad():
             for data, target in test_loader:
+                data, target = data.to(device), target.to(device)
                 output = self.model(data)
                 test_loss += F.cross_entropy(output, target, reduction='sum').item()
                 pred = output.argmax(dim=1)
@@ -1700,8 +1887,8 @@ class BaselineExperiment:
         if len(precision_per_class) == 2:
             self.logger.info(
                 f'类别详细指标:'
-                f'\n恶意流量 - 精确率: {precision_per_class[0]*100:.2f}%, 召回率: {recall_per_class[0]*100:.2f}%, F1: {f1_per_class[0]*100:.2f}%'
-                f'\n良性流量 - 精确率: {precision_per_class[1]*100:.2f}%, 召回率: {recall_per_class[1]*100:.2f}%, F1: {f1_per_class[1]*100:.2f}%'
+                f'\n良性流量 - 精确率: {precision_per_class[0]*100:.2f}%, 召回率: {recall_per_class[0]*100:.2f}%, F1: {f1_per_class[0]*100:.2f}%'
+                f'\n恶意流量 - 精确率: {precision_per_class[1]*100:.2f}%, 召回率: {recall_per_class[1]*100:.2f}%, F1: {f1_per_class[1]*100:.2f}%'
             )
         
         return metrics
@@ -1805,6 +1992,10 @@ class BaselineExperiment:
                 # 加载保存的参数
                 orbit_model.load_state_dict(complete_state_dict)
                 
+                # 确保模型在正确的设备上
+                device = next(self.model.parameters()).device
+                orbit_model = orbit_model.to(device)
+                
                 # 评估模型
                 orbit_model.eval()
                 correct = 0
@@ -1818,6 +2009,7 @@ class BaselineExperiment:
                 
                 with torch.no_grad():
                     for data, target in test_loader:
+                        data, target = data.to(device), target.to(device)
                         output = orbit_model(data)
                         pred = output.argmax(dim=1)
                         total += target.size(0)
@@ -1827,10 +2019,21 @@ class BaselineExperiment:
                 results[orbit_id] = accuracy
                 self.logger.info(f"轨道 {orbit_id} 训练后模型准确率: {accuracy:.2f}%")
                 
+                # 清理模型以释放内存
+                del orbit_model
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                
             except Exception as e:
                 self.logger.error(f"评估轨道 {orbit_id} 模型时出错: {str(e)}")
                 import traceback
                 self.logger.error(traceback.format_exc())
+                
+                # 确保出错时也清理
+                if 'orbit_model' in locals():
+                    del orbit_model
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
         
         return results
 

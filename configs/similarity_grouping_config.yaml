@@ -1,33 +1,34 @@
-# 网络配置
+# STELLAR: Similarity-based grouping FL configuration
+
+# Network configuration
 network:
   tle_file: "configs/Iridium_TLEs.txt"
-  max_distance: 4000.0  # km
+  max_distance: 4000.0  # Maximum ISL distance (km)
 
-# 能源配置
+# Energy model configuration
 energy:
   config_file: "configs/energy_config.yaml"
-  
-# 联邦学习配置
-fl:
-  num_satellites: 66  # 总卫星数量
-  satellites_per_orbit: 11  # 每轨道卫星数
-  num_orbits: 6  # 轨道数量
-  num_rounds: 20
-  round_interval: 600  # 每轮训练间隔(秒)
-  
-# 数据配置
-data:
-  dataset: "real_traffic"  # 使用真实网络流量数据
-  csv_path: "/Users/lyb/Downloads/gitProjects/STI/merged_traffic_data_20250305_111338.csv"
-  # csv_path: "/Users/lyb/Downloads/gitProjects/STI/merged_traffic_data_20250305_111338.csv"
-  test_size: 0.2  # 测试集比例
-  iid: true  # 独立同分布
-  alpha: 0.5  # Dirichlet参数(较小值使分布更不均匀)
-  region_similarity: false  # 是否启用区域相似度
-  overlap_ratio: 0.5
-  
 
-# 模型配置
+# Federated learning configuration
+fl:
+  num_satellites: 66         # Total number of satellites
+  satellites_per_orbit: 11   # Satellites per orbital plane
+  num_orbits: 6              # Number of orbital planes
+  num_rounds: 20             # Number of FL communication rounds
+  round_interval: 600        # Simulated seconds between rounds
+
+# Data configuration
+# Set csv_path to your local traffic dataset CSV file
+data:
+  dataset: "real_traffic"
+  csv_path: "data/traffic_data.csv"   # <-- update this path
+  test_size: 0.2             # Fraction of data for testing
+  iid: true                  # true = IID split; false = non-IID (Dirichlet)
+  alpha: 0.5                 # Dirichlet alpha (used only when iid: false)
+  region_similarity: false
+  overlap_ratio: 0.5
+
+# Model configuration
 model:
   type: "traffic_classifier"
   hidden_dim: 64
@@ -35,7 +36,7 @@ model:
   learning_rate: 0.01
   momentum: 0.9
 
-# 客户端配置
+# Client configuration
 client:
   batch_size: 32
   local_epochs: 5
@@ -43,30 +44,33 @@ client:
   momentum: 0.9
   compute_capacity: 1.0
   storage_capacity: 1000.0
-  
-# 聚合配置
+
+# Aggregation configuration
 aggregation:
   min_updates: 2
   max_staleness: 300.0
   timeout: 600.0
   weighted_average: true
 
-# 地面站配置
+# Ground station configuration
 ground_station:
-  bandwidth_limit: 1000.0  # Mbps
-  storage_limit: 10000.0   # MB
+  bandwidth_limit: 1000.0    # Mbps
+  storage_limit: 10000.0     # MB
   priority_levels: 3
   batch_size: 10
   aggregation_interval: 60.0
 
-# 数据相似度分组配置
+# STELLAR similarity-based grouping configuration
 group:
-  max_distance: 2           # 最大距离阈值，表示每个源节点考虑左右多少个相邻节点
-  max_group_size: 5         # 每组最大卫星数量
-  similarity_threshold: 0.5  # 初始相似度阈值
-  max_group_size_threshold: 4  # 触发相似度阈值调整的组大小
-  similarity_refresh_rounds: 5  # 每多少轮重新计算分组
-
+  max_distance: 2              # Hop radius for neighbor search
+  max_group_size: 5            # Maximum satellites per similarity group
+  similarity_threshold: 0.5   # Minimum composite similarity score to form a group
+  max_group_size_threshold: 4  # Trigger threshold adjustment when group exceeds this size
+  similarity_refresh_rounds: 5 # Re-compute grouping every N rounds
+  weights:
+    alpha: 0.4                 # Weight for parameter similarity
+    beta: 0.3                  # Weight for loss similarity
+    gamma: 0.3                 # Weight for prediction distribution similarity
 
 early_stopping:
   enabled: false

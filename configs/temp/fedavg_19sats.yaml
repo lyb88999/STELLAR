@@ -12,7 +12,7 @@ client:
   storage_capacity: 1000.0
 data:
   alpha: 0.6
-  csv_path: /Users/yuboli/Downloads/merged_traffic_data_20250305_111338.csv
+  csv_path: data/traffic_data.csv   # <-- update this path
   dataset: real_traffic
   iid: true
   test_size: 0.2

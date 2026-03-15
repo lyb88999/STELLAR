@@ -21,7 +21,7 @@ class Generator(nn.Module):
             nn.BatchNorm1d(512, momentum=0.1),
             nn.LeakyReLU(0.2),
             nn.Linear(512, output_dim),
-            nn.Tanh()
+            nn.BatchNorm1d(output_dim, affine=True) # 使用BN替代Tanh以匹配StandardScaler的数据分布
         )
         
     def forward(self, x):
@@ -94,6 +94,14 @@ class SDAFLExperiment(BaselineExperiment):
         
         # 创建卫星距离矩阵
         satellites = list(self.clients.keys())
+        # 动态检测每个轨道的最大卫星编号
+        orbit_max_sats = {}
+        for sat_id in satellites:
+            parts = sat_id.split('_')[1].split('-')
+            if len(parts) == 2:
+                orbit_id, sat_num = int(parts[0]), int(parts[1])
+                orbit_max_sats[orbit_id] = max(orbit_max_sats.get(orbit_id, 0), sat_num)
+        
         for sat_id in satellites:
             if sat_id not in self.satellite_neighbors:
                 self.satellite_neighbors[sat_id] = []
@@ -104,49 +112,31 @@ class SDAFLExperiment(BaselineExperiment):
                 continue
                 
             orbit_id, sat_num = int(parts[0]), int(parts[1])
-            satellites_per_orbit = self.config['fl']['satellites_per_orbit']
+            max_sat_num = orbit_max_sats.get(orbit_id, self.config['fl']['satellites_per_orbit'])
             
-            # 添加同轨道邻居
-            if self.intra_orbit_links:
-                for distance in [1, 2]:  # 距离1和2的卫星
-                    # 向后
-                    next_num = sat_num + distance
-                    if next_num > satellites_per_orbit:
-                        next_num = next_num - satellites_per_orbit
-                    next_id = f"satellite_{orbit_id}-{next_num}"
-                    if next_id in satellites and next_id not in self.satellite_neighbors[sat_id]:
-                        self.satellite_neighbors[sat_id].append(next_id)
-                        
-                    # 向前
-                    prev_num = sat_num - distance
-                    if prev_num <= 0:
-                        prev_num = satellites_per_orbit + prev_num
-                    prev_id = f"satellite_{orbit_id}-{prev_num}"
-                    if prev_id in satellites and prev_id not in self.satellite_neighbors[sat_id]:
-                        self.satellite_neighbors[sat_id].append(prev_id)
+            # 寻找同一轨道的邻居卫星 (环形拓扑)
+            # 前一个邻居
+            prev_num = sat_num - 1 if sat_num > 1 else max_sat_num
+            prev_id = f"satellite_{orbit_id}-{prev_num}"
+            if prev_id in satellites:
+                self.satellite_neighbors[sat_id].append(prev_id)
+                
+            # 后一个邻居
+            next_num = sat_num + 1 if sat_num < max_sat_num else 1
+            next_id = f"satellite_{orbit_id}-{next_num}"
+            if next_id in satellites:
+                self.satellite_neighbors[sat_id].append(next_id)
             
-            # 添加跨轨道邻居
-            if self.inter_orbit_links:
+            # 添加不同轨道的邻居（如果配置启用了跨轨道链接）
+            if self.inter_orbit_links and self.propagation_hops > 1:
                 for other_orbit in range(1, self.config['fl']['num_orbits'] + 1):
                     if other_orbit == orbit_id:
-                        continue  # 跳过同轨道
-                    
-                    # 添加相同位置的卫星
-                    other_id = f"satellite_{other_orbit}-{sat_num}"
-                    if other_id in satellites:
-                        self.satellite_neighbors[sat_id].append(other_id)
-                    
-                    # 添加相邻位置的卫星
-                    for offset in [-1, 1]:
-                        other_num = sat_num + offset
-                        if other_num <= 0:
-                            other_num = satellites_per_orbit
-                        elif other_num > satellites_per_orbit:
-                            other_num = 1
+                        continue  # 跳过同一轨道
                         
-                        neighbor_id = f"satellite_{other_orbit}-{other_num}"
-                        if neighbor_id in satellites:
-                            self.satellite_neighbors[sat_id].append(neighbor_id)
+                    # 添加其他轨道上对应位置的卫星作为邻居
+                    other_sat_id = f"satellite_{other_orbit}-{sat_num}"
+                    if other_sat_id in satellites:
+                        self.satellite_neighbors[sat_id].append(other_sat_id)
         
         # 打印网络统计信息
         total_edges = sum(len(neighbors) for neighbors in self.satellite_neighbors.values())
@@ -159,7 +149,7 @@ class SDAFLExperiment(BaselineExperiment):
         
         # 检查每个卫星是否可见任何地面站
         for sat_id in self.clients.keys():
-            for station_id in ['station_0', 'station_1', 'station_2']:
+            for station_id in self.ground_stations.keys():
                 is_visible = self.network_model._check_visibility(station_id, sat_id, current_time)
                 if is_visible:
                     visible_satellites.append(sat_id)
@@ -213,7 +203,7 @@ class SDAFLExperiment(BaselineExperiment):
         
         return self.generator, self.discriminator
     
-    def _train_gan(self, train_data, num_epochs=50, batch_size=32):
+    def _train_gan(self, train_data, num_epochs=20, batch_size=32):
         """训练GAN模型"""
         self.logger.info("开始训练GAN模型")
         
@@ -365,7 +355,7 @@ class SDAFLExperiment(BaselineExperiment):
         """为合成样本分配伪标签"""
         # 使用当前的全局模型进行预测
         device = next(self.model.parameters()).device
-        sample_batch = sample.unsqueeze(0)
+        sample_batch = sample.unsqueeze(0).to(device)
         
         self.model.eval()
         with torch.no_grad():
@@ -536,30 +526,83 @@ class SDAFLExperiment(BaselineExperiment):
                     updates.append(model_update)
                     weights.append(dataset_size)
                 
-                # 标准化权重
+                # 检查是否有有效的权重数据
                 total_samples = sum(weights)
+                if total_samples == 0:
+                    self.logger.warning(f"第 {round_num + 1} 轮没有有效的训练数据，跳过聚合")
+                    current_time += self.config['fl']['round_interval']
+                    continue
+                
+                # 标准化权重
                 weights = [w/total_samples for w in weights]
                 
-                # 聚合
+                # FedAvg聚合（加权平均）
                 aggregated_update = {}
-                for param_name in updates[0].keys():
-                    weighted_sum = None
-                    for i, update in enumerate(updates):
-                        weighted_param = update[param_name] * weights[i]
-                        if weighted_sum is None:
-                            weighted_sum = weighted_param
-                        else:
-                            weighted_sum += weighted_param
-                    aggregated_update[param_name] = weighted_sum
+                
+                # 获取所有更新中共同的参数键
+                common_keys = set(updates[0].keys())
+                self.logger.info(f"Update 0 keys count: {len(common_keys)}")
+                # self.logger.info(f"Update 0 keys: {list(common_keys)}")
+
+                for i, update in enumerate(updates[1:]):
+                    update_keys = set(update.keys())
+                    intersection = common_keys.intersection(update_keys)
+                    if len(intersection) != len(common_keys):
+                        self.logger.warning(f"Update {i+1} causes keys reduction! Previous: {len(common_keys)}, Now: {len(intersection)}")
+                        missing = common_keys - update_keys
+                        if missing:
+                            self.logger.warning(f"Update {i+1} missing keys: {missing}")
+                        extra = update_keys - common_keys
+                        if extra:
+                            self.logger.warning(f"Update {i+1} has extra keys: {extra}")
+                    common_keys = intersection
+                
+                if not common_keys:
+                    self.logger.error("没有找到共同的模型参数键，跳过聚合")
+                    current_time = datetime.now().timestamp() + round_num * self.config['fl']['round_interval']
+                    continue
+                
+                self.logger.info(f"聚合 {len(common_keys)} 个共同的模型参数")
+                
+                for param_name in common_keys:
+                    # 检查所有更新都包含这个参数
+                    if all(param_name in update for update in updates):
+                        weighted_sum = None
+                        for i, update in enumerate(updates):
+                            weighted_param = update[param_name] * weights[i]
+                            if weighted_sum is None:
+                                weighted_sum = weighted_param
+                            else:
+                                weighted_sum += weighted_param
+                        aggregated_update[param_name] = weighted_sum
+                    else:
+                        self.logger.warning(f"参数 {param_name} 不在所有更新中，跳过")
 
                 # 7. 更新全局模型 - 保留BatchNorm层统计数据
                 current_state_dict = self.model.state_dict()
+                
+                # 创建新的状态字典，确保所有必需的键都存在
+                new_state_dict = {}
                 for name, param in current_state_dict.items():
-                    if 'running_mean' in name or 'running_var' in name or 'num_batches_tracked' in name:
-                        aggregated_update[name] = param
+                    if name in aggregated_update:
+                        # 使用聚合的参数
+                        new_state_dict[name] = aggregated_update[name].to(param.device)
+                    elif 'running_mean' in name or 'running_var' in name or 'num_batches_tracked' in name:
+                        # 保留BatchNorm统计数据
+                        new_state_dict[name] = param
+                    else:
+                        # 其他情况保留原参数
+                        self.logger.warning(f"参数 {name} 不在聚合更新中，保留原值")
+                        new_state_dict[name] = param
 
                 # 更新全局模型
-                self.model.load_state_dict(aggregated_update)
+                try:
+                    self.model.load_state_dict(new_state_dict)
+                except Exception as e:
+                    self.logger.error(f"加载模型状态字典失败: {str(e)}")
+                    self.logger.error(f"当前模型键: {list(current_state_dict.keys())}")
+                    self.logger.error(f"聚合更新键: {list(aggregated_update.keys())}")
+                    raise
                 
                 # 8. 评估全局模型
                 # accuracy = self.evaluate()
@@ -722,30 +765,70 @@ class SDAFLExperiment(BaselineExperiment):
                     updates.append(model_update)
                     weights.append(dataset_size)
                 
-                # 标准化权重
+                # 检查是否有有效的权重数据
                 total_samples = sum(weights)
+                if total_samples == 0:
+                    self.logger.warning(f"第 {round_num + 1} 轮没有有效的训练数据，跳过聚合")
+                    current_time += self.config['fl']['round_interval']
+                    continue
+                
+                # 标准化权重
                 weights = [w/total_samples for w in weights]
                 
-                # 聚合
+                # FedAvg聚合（加权平均）
                 aggregated_update = {}
-                for param_name in updates[0].keys():
-                    weighted_sum = None
-                    for i, update in enumerate(updates):
-                        weighted_param = update[param_name] * weights[i]
-                        if weighted_sum is None:
-                            weighted_sum = weighted_param
-                        else:
-                            weighted_sum += weighted_param
-                    aggregated_update[param_name] = weighted_sum
+                
+                # 获取所有更新中共同的参数键
+                common_keys = set(updates[0].keys())
+                for update in updates[1:]:
+                    common_keys = common_keys.intersection(set(update.keys()))
+                
+                if not common_keys:
+                    self.logger.error("没有找到共同的模型参数键，跳过聚合")
+                    current_time = datetime.now().timestamp() + round_num * self.config['fl']['round_interval']
+                    continue
+                
+                self.logger.info(f"聚合 {len(common_keys)} 个共同的模型参数")
+                
+                for param_name in common_keys:
+                    # 检查所有更新都包含这个参数
+                    if all(param_name in update for update in updates):
+                        weighted_sum = None
+                        for i, update in enumerate(updates):
+                            weighted_param = update[param_name] * weights[i]
+                            if weighted_sum is None:
+                                weighted_sum = weighted_param
+                            else:
+                                weighted_sum += weighted_param
+                        aggregated_update[param_name] = weighted_sum
+                    else:
+                        self.logger.warning(f"参数 {param_name} 不在所有更新中，跳过")
 
                 # 7. 更新全局模型 - 保留BatchNorm层统计数据
                 current_state_dict = self.model.state_dict()
+                
+                # 创建新的状态字典，确保所有必需的键都存在
+                new_state_dict = {}
                 for name, param in current_state_dict.items():
-                    if 'running_mean' in name or 'running_var' in name or 'num_batches_tracked' in name:
-                        aggregated_update[name] = param
+                    if name in aggregated_update:
+                        # 使用聚合的参数
+                        new_state_dict[name] = aggregated_update[name].to(param.device)
+                    elif 'running_mean' in name or 'running_var' in name or 'num_batches_tracked' in name:
+                        # 保留BatchNorm统计数据
+                        new_state_dict[name] = param
+                    else:
+                        # 其他情况保留原参数
+                        self.logger.warning(f"参数 {name} 不在聚合更新中，保留原值")
+                        new_state_dict[name] = param
 
                 # 更新全局模型
-                self.model.load_state_dict(aggregated_update)
+                try:
+                    self.model.load_state_dict(new_state_dict)
+                except Exception as e:
+                    self.logger.error(f"加载模型状态字典失败: {str(e)}")
+                    self.logger.error(f"当前模型键: {list(current_state_dict.keys())}")
+                    self.logger.error(f"聚合更新键: {list(aggregated_update.keys())}")
+                    raise
                 
                 # 8. 评估全局模型
                 # accuracy = self.evaluate()

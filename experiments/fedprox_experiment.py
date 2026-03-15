@@ -306,9 +306,19 @@ class FedProxExperiment(FedAvgExperiment):
         self.logger.info(f"使用设备: {device}")
         
         # 为每个轨道创建卫星
-        for orbit in range(1, 7):  # 6个轨道
-            for sat in range(1, 12):  # 每轨道11颗卫星
+        num_orbits = self.config['fl']['num_orbits']
+        sats_per_orbit = self.config['fl']['satellites_per_orbit']
+        
+        for orbit in range(1, num_orbits + 1):
+            for sat in range(1, sats_per_orbit + 1):
                 sat_id = f"satellite_{orbit}-{sat}"
+                
+                # 检查卫星是否存在于网络模型中
+                if sat_id not in self.network_model.satellites:
+                    continue
+                
+                # if sat_id == "satellite_1-51":
+                #     self.logger.info(f"DEBUG: Creating client for {sat_id} (Found in network_model)")
                 
                 # 创建客户端 - 使用适当的模型类型
                 if self.config['data'].get('dataset') == 'real_traffic':
@@ -355,6 +365,23 @@ class FedProxExperiment(FedAvgExperiment):
                     client = FedProxClient(
                         sat_id,
                         model_copy,
+                        client_config,
+                        self.network_manager,
+                        self.energy_model,
+                        mu=self.mu,
+                        device=device
+                    )
+                elif self.config['data'].get('dataset') in ['real_traffic', 'cicids2017']:
+                    from fl_core.models.real_traffic_model import RealTrafficModel
+                    base_model = RealTrafficModel(
+                        input_dim=self.config['model']['feature_dim'],
+                        hidden_dim=self.config['model'].get('hidden_dim', 64),
+                        num_classes=self.config['model'].get('num_classes', 2)
+                    )
+                    base_model.load_state_dict(self.model.state_dict())
+                    client = FedProxClient(
+                        sat_id,
+                        base_model,
                         client_config,
                         self.network_manager,
                         self.energy_model,

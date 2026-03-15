@@ -37,6 +37,17 @@ class SatelliteClient:
         print(f"客户端 {client_id} 使用设备: {self.device}")
 
         
+        self.config = config
+        self.network_manager = network_manager
+        self.energy_manager = energy_manager
+
+        self.dataset = None
+        self.optimizer = None
+        self.scheduler = None
+        self.train_stats = []
+        self.is_training = False
+        self.current_round = 0
+
         # 创建模型的深度复制
         if hasattr(model, '__init__args__') and hasattr(model, '__init__kwargs__'):
             # 使用保存的初始化参数创建新实例
@@ -45,37 +56,10 @@ class SatelliteClient:
             self.model.load_state_dict({k: v.clone() for k, v in model.state_dict().items()})
         else:
             # 无法获取初始化参数，直接使用传入的模型
-            self.logger.warning(f"Client {client_id}: 无法深度复制模型，使用直接引用")
+            print(f"Client {client_id}: 无法深度复制模型，使用直接引用")
             self.model = model
-        
-        self.config = config
-        self.network_manager = network_manager
-        self.energy_manager = energy_manager
-        
-        self.dataset = None
-        self.optimizer = None
-        self.scheduler = None
-        self.train_stats = []
-        self.is_training = False
-        self.current_round = 0
-        
-        # 初始化优化器
-        self.optimizer = torch.optim.SGD(
-            self.model.parameters(),
-            lr=config.learning_rate,
-            momentum=config.momentum
-        )
+        self.model = self.model.cpu()
 
-        # 将模型移动到GPU
-        if hasattr(model, '__init__args__') and hasattr(model, '__init__kwargs__'):
-            self.model = type(model)(*model.__init__args__, **model.__init__kwargs__)
-            self.model.load_state_dict({k: v.clone() for k, v in model.state_dict().items()})
-        else:
-            self.logger.warning(f"Client {client_id}: 无法深度复制模型，使用直接引用")
-            self.model = model
-        # 移动模型到设备
-        self.model = self.model.to(self.device)
-        
         # 初始化优化器
         self.optimizer = torch.optim.SGD(
             self.model.parameters(),
@@ -108,13 +92,21 @@ class SatelliteClient:
         stats = self._init_training_stats()
         
         # 4. 执行训练
+        # 将模型移动到计算设备
+        self.model = self.model.to(self.device)
         self.model.train()
         start_time = datetime.now()
         
-        for epoch in range(self.config.local_epochs):
-            epoch_stats = self._train_one_epoch(epoch, train_loader, stats)
-            if not epoch_stats['completed']:
-                break
+        try:
+            for epoch in range(self.config.local_epochs):
+                epoch_stats = self._train_one_epoch(epoch, train_loader, stats)
+                if not epoch_stats['completed']:
+                    break
+        finally:
+            # 训练结束后将模型移回CPU以释放显存
+            self.model = self.model.cpu()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
         
         # 5. 完成训练
         stats = self._finalize_training_stats(stats, start_time)
@@ -144,9 +136,16 @@ class SatelliteClient:
 
     def _prepare_data_loader(self) -> Optional[DataLoader]:
         """准备数据加载器"""
+        # 确保batch size至少为2，以避免BatchNorm问题
+        effective_batch_size = min(self.config.batch_size, len(self.dataset))
+        if effective_batch_size < 2:
+            # 如果数据太少，设置为eval模式避免BatchNorm问题
+            self.model.eval()
+            effective_batch_size = 1
+        
         train_loader = DataLoader(
             self.dataset,
-            batch_size=min(self.config.batch_size, len(self.dataset)),
+            batch_size=effective_batch_size,
             shuffle=True
         )
         
@@ -183,6 +182,38 @@ class SatelliteClient:
             'completed': True
         }
         
+        # 如果batch size大于1，设置为训练模式
+        if train_loader.batch_size > 1:
+            self.model.train()
+        else:
+            # 如果batch size为1，保持eval模式以避免BatchNorm问题
+            self.model.eval()
+        
+        # 计算整个数据集的类别权重（更稳健）
+        if not hasattr(self, 'class_weights'):
+            try:
+                # 尝试从dataset直接获取所有targets
+                if isinstance(self.dataset, torch.utils.data.TensorDataset):
+                    all_targets = self.dataset.tensors[1]
+                else:
+                    # 遍历dataset收集targets (如果dataset较小)
+                    all_targets = torch.tensor([y for _, y in self.dataset])
+                
+                class_counts = torch.bincount(all_targets.long(), minlength=2)
+                total = class_counts.sum()
+                # Inverse frequency weighting: total / (num_classes * count)
+                # Add smoothing to avoid division by zero
+                weights = total / (2.0 * (class_counts.float() + 1))
+                
+                # Normalize weights so they sum to 2 (optional, but keeps loss scale similar)
+                weights = weights / weights.sum() * 2.0
+                
+                self.class_weights = weights.to(self.device)
+                # print(f"Client {self.client_id} Class Weights: {self.class_weights}")
+            except Exception as e:
+                # Fallback to balanced if failed
+                self.class_weights = torch.tensor([1.0, 1.0]).to(self.device)
+
         for batch_idx, (data, target) in enumerate(train_loader):
             # 批次能量检查
             batch_energy = self._estimate_batch_energy()
@@ -195,19 +226,77 @@ class SatelliteClient:
             try:
                 data = data.to(self.device)
                 target = target.to(self.device)
-                # 前向传播
-                output = self.model(data)
-                loss = nn.functional.cross_entropy(output, target)
                 
-                # 反向传播
-                self.optimizer.zero_grad()
-                loss.backward()
-                self.optimizer.step()
-                
-                # 计算准确率
-                _, predicted = output.max(1)
-                batch_total = target.size(0)
-                batch_correct = predicted.eq(target).sum().item()
+                # 如果batch size为1且模型有BatchNorm，特殊处理
+                if data.size(0) == 1:
+                    # 对于单样本，使用no_grad模式进行前向传播以避免BatchNorm问题
+                    with torch.no_grad():
+                        self.model.eval()
+                        output = self.model(data)
+                        loss = nn.functional.cross_entropy(output, target, weight=self.class_weights)
+                        
+                        # 计算准确率
+                        _, predicted = output.max(1)
+                        batch_total = target.size(0)
+                        batch_correct = predicted.eq(target).sum().item()
+                else:
+                    # 正常的训练过程
+                    self.model.train()
+                    # 前向传播
+                    output = self.model(data)
+                    
+                    # 检查是否为混合模型输出 (tuple: prediction, reconstruction)
+                    if isinstance(output, tuple):
+                        pred, recon = output
+                        # Hybrid Loss: 0.5 * MSE + 1.0 * BCE
+                        # Pred shape: (batch, 1), Target shape: (batch)
+                        # BCEWithLogitsLoss implies Sigmoid inside loss, but model has Sigmoid.
+                        # Using BCELoss.
+                        
+                        # Reconstruction Loss (MSE)
+                        # data might need detach? No.
+                        mse_loss = nn.functional.mse_loss(recon, data)
+                        
+                        # Classification Loss (BCE)
+                        # Ensure target is float and shape matches pred
+                        target_float = target.float().unsqueeze(1)
+                        bce_loss = nn.functional.binary_cross_entropy(pred, target_float, weight=self.class_weights[1] if hasattr(self, 'class_weights') else None)
+                        # Note: Simple class weight scalar for BCE? 
+                        # Usually BCE weights are handling positive class weight (pos_weight).
+                        # self.class_weights from CrossEntropy is [w0, w1].
+                        # Standard BCE doesn't take [w0, w1]. It takes 'weight' (per batch item) or 'pos_weight'.
+                        # Let's simplify: Use standard BCE for now as instructed "BCE (Binary Cross Entropy)".
+                        # The user didn't specify weighted BCE for the hybrid model.
+                        # But imbalance is an issue.
+                        # Functional BCE `weight` arg is per-element weight.
+                        # I can create a weight tensor based on target.
+                        
+                        if hasattr(self, 'class_weights'):
+                             # Map target 0 -> w0, 1 -> w1
+                             batch_weights = torch.where(target == 1, self.class_weights[1], self.class_weights[0])
+                             batch_weights = batch_weights.unsqueeze(1)
+                             bce_loss = nn.functional.binary_cross_entropy(pred, target_float, weight=batch_weights)
+                        else:
+                             bce_loss = nn.functional.binary_cross_entropy(pred, target_float)
+
+                        loss = 0.5 * mse_loss + 1.0 * bce_loss
+                        
+                        # Use predicted for accuracy
+                        # pred is probability
+                        predicted = (pred > 0.5).long().squeeze()
+                    else:
+                        # Standard Cross Entropy
+                        loss = nn.functional.cross_entropy(output, target, weight=self.class_weights)
+                        _, predicted = output.max(1)
+                    
+                    # 反向传播
+                    self.optimizer.zero_grad()
+                    loss.backward()
+                    self.optimizer.step()
+                    
+                    # 计算准确率
+                    batch_total = target.size(0)
+                    batch_correct = predicted.eq(target).sum().item()
                 
                 # 更新统计信息
                 batch_loss = loss.item()
@@ -223,7 +312,7 @@ class SatelliteClient:
                 self.energy_manager.consume_energy(self.client_id, batch_energy)
                 stats['summary']['energy_consumption'] += batch_energy
                 
-                if (batch_idx + 1) % 10 == 0:
+                if (batch_idx + 1) % 50 == 0:
                     print(f"Client {self.client_id}: Epoch {epoch+1}, "
                         f"Batch {batch_idx+1}/{len(train_loader)}")
                     
@@ -321,37 +410,50 @@ class SatelliteClient:
             # 确保返回CPU上的参数以便通信
             model_diff[name] = param.data.clone().detach().cpu()
         
+        # 计算并消耗上传能耗
+        model_size_mb = sum(p.nelement() * p.element_size() for p in model_diff.values()) / (1024 * 1024)
+        # 假设上行带宽 50 Mbps
+        if hasattr(self.energy_manager, 'calculate_transmission_energy'):
+            energy = self.energy_manager.calculate_transmission_energy(self.client_id, model_size_mb, bandwidth=50.0)
+            self.energy_manager.consume_energy(self.client_id, energy)
+            
         return model_diff, self.train_stats[-1]
         
     def apply_model_update(self, model_update: Dict[str, torch.Tensor]):
+        # 计算并消耗下载能耗
         model_size_mb = sum(p.nelement() * p.element_size() for p in model_update.values()) / (1024 * 1024)
-        energy_consumption = 0.01 * model_size_mb  # 例如每MB消耗0.001Wh
+        # 假设下行带宽 100 Mbps
+        if hasattr(self.energy_manager, 'calculate_transmission_energy'):
+            energy = self.energy_manager.calculate_transmission_energy(self.client_id, model_size_mb, bandwidth=100.0)
+            self.energy_manager.consume_energy(self.client_id, energy)
+            
         """应用模型更新"""
         with torch.no_grad():
-            new_state_dict = {}
-            for name, param in model_update.items():
-                # 将更新移动到设备
-                new_state_dict[name] = param.to(self.device)
-
-            # 创建参数的深度复制
-            new_state_dict = {}
-            for name, param in model_update.items():
-                new_state_dict[name] = param.clone().detach()
-            
-            # 检查参数匹配
+            # 获取当前模型状态
             current_state = self.model.state_dict()
-            for name in new_state_dict:
-                if name not in current_state:
-                    print(f"警告: 参数 {name} 不在模型中")
-
-            # 保留批量归一化层的统计数据
+            
+            # 创建新的状态字典
+            new_state_dict = {}
             for name, param in current_state.items():
-                if 'running_mean' in name or 'running_var' in name or 'num_batches_tracked' in name:
-                    if name not in new_state_dict:
-                        new_state_dict[name] = param
+                if name in model_update:
+                    # 将更新移动到CPU (因为模型在CPU上)
+                    new_state_dict[name] = model_update[name].clone().detach().cpu()
+                elif 'running_mean' in name or 'running_var' in name or 'num_batches_tracked' in name:
+                    # 保留BatchNorm统计数据
+                    new_state_dict[name] = param
+                else:
+                    # 其他情况保留原参数
+                    print(f"警告: 参数 {name} 不在模型更新中，保留原值")
+                    new_state_dict[name] = param
             
             # 更新模型参数
-            self.model.load_state_dict(new_state_dict)
+            try:
+                self.model.load_state_dict(new_state_dict)
+            except Exception as e:
+                print(f"客户端 {self.client_id} 加载模型更新失败: {str(e)}")
+                print(f"当前模型键: {list(current_state.keys())}")
+                print(f"更新键: {list(model_update.keys())}")
+                raise
             
             # 重新初始化优化器
             self.optimizer = torch.optim.SGD(
@@ -363,7 +465,7 @@ class SatelliteClient:
             # 添加调试信息
             first_param = next(iter(new_state_dict.values()))
             print(f"卫星 {self.client_id} 应用更新: 第一个参数示例值 {first_param.flatten()[0].item():.4f}")
-            self.energy_manager.consume_energy(self.client_id, energy_consumption)
+
 
 
                     
@@ -400,22 +502,31 @@ class SatelliteClient:
     #     }
         
     def evaluate(self, test_data: Dataset) -> Dict:
+        # 评估时临时移动到设备
+        self.model = self.model.to(self.device)
         self.model.eval()
         test_loader = DataLoader(test_data, batch_size=self.config.batch_size)
         correct = 0
         total = 0
         test_loss = 0.0
-        with torch.no_grad():
-            for data, target in test_loader:
-                # 移动数据到设备
-                data = data.to(self.device)
-                target = target.to(self.device)
-                
-                output = self.model(data)
-                test_loss += nn.functional.cross_entropy(output, target).item()
-                _, predicted = output.max(1)
-                total += target.size(0)
-                correct += predicted.eq(target).sum().item()
+        
+        try:
+            with torch.no_grad():
+                for data, target in test_loader:
+                    # 移动数据到设备
+                    data = data.to(self.device)
+                    target = target.to(self.device)
+                    
+                    output = self.model(data)
+                    test_loss += nn.functional.cross_entropy(output, target).item()
+                    _, predicted = output.max(1)
+                    total += target.size(0)
+                    correct += predicted.eq(target).sum().item()
+        finally:
+            # 评估结束后移回CPU
+            self.model = self.model.cpu()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
         
         accuracy = 100.0 * correct / total
         avg_loss = test_loss / len(test_loader)

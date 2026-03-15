@@ -40,6 +40,8 @@ class GlobalAggregator:
         self.current_version = 0
         self.validation_results = defaultdict(dict)  # round -> {station_id: metrics}
         self.logger = logging.getLogger(__name__)
+        import threading
+        self._lock = threading.Lock()
 
         
     def add_ground_station(self, station_id: str, weight: float = 1.0):
@@ -59,27 +61,28 @@ class GlobalAggregator:
         接收地面站更新
         """
         try:
-            self.logger.info(f"全局聚合器接收到地面站 {station_id} 的更新")
+            with self._lock:
+                self.logger.info(f"全局聚合器接收到地面站 {station_id} 的更新")
             
-            if station_id not in self.ground_stations:
-                self.logger.warning(f"未知地面站: {station_id}")
-                return False
+                if station_id not in self.ground_stations:
+                    self.logger.warning(f"未知地面站: {station_id}")
+                    return False
+                    
+                # 存储更新
+                self.pending_updates[round_number][station_id] = {
+                    'update': {k: v.clone() for k, v in model_update.items()},
+                    'metrics': metrics,
+                    'base_version': base_version,
+                    'timestamp': datetime.now().timestamp()
+                }
                 
-            # 存储更新
-            self.pending_updates[round_number][station_id] = {
-                'update': {k: v.clone() for k, v in model_update.items()},
-                'metrics': metrics,
-                'base_version': base_version,
-                'timestamp': datetime.now().timestamp()
-            }
-            
-            self.logger.info(f"成功存储地面站 {station_id} 的更新，当前轮次 {round_number} 共有 {len(self.pending_updates[round_number])} 个更新")
-            
-            # 检查是否可以进行聚合
-            if self._should_aggregate(round_number):
-                self._aggregate_round(round_number)
+                self.logger.info(f"成功存储地面站 {station_id} 的更新，当前轮次 {round_number} 共有 {len(self.pending_updates[round_number])} 个更新")
                 
-            return True
+                # 检查是否可以进行聚合
+                if self._should_aggregate(round_number):
+                    self._aggregate_round(round_number)
+                    
+                return True
             
         except Exception as e:
             self.logger.error(f"接收地面站更新时出错: {str(e)}")
@@ -122,6 +125,25 @@ class GlobalAggregator:
             
         # 检查是否所有地面站都已更新
         return len(updates) == len(self.ground_stations)
+
+    def force_aggregate(self, round_number: int) -> bool:
+        """
+        强制执行聚合（只要满足最小地面站数量）
+        Args:
+            round_number: 轮次
+        Returns:
+            bool: 是否成功触发聚合
+        """
+        with self._lock:
+            if round_number not in self.pending_updates:
+                return False
+                
+            updates = self.pending_updates[round_number]
+            if len(updates) < self.config.min_ground_stations:
+                self.logger.warning(f"强制聚合失败：更新数量不足 {len(updates)} < {self.config.min_ground_stations}")
+                return False
+                
+            return self._aggregate_round(round_number)
         
     def _aggregate_round(self, round_number: int):
         """

@@ -1,45 +1,44 @@
-# 网络配置
+# FedAvg baseline configuration
+
+# Network configuration
 network:
   tle_file: "configs/Iridium_TLEs.txt"
-  max_distance: 4000.0  # km
+  max_distance: 4000.0  # Maximum ISL distance (km)
 
-# 能源配置
+# Energy model configuration
 energy:
   config_file: "configs/energy_config.yaml"
-  
-# 联邦学习配置
-fl:
-  num_satellites: 66  # 总卫星数量
-  satellites_per_orbit: 11  # 每轨道卫星数
-  num_orbits: 6  # 轨道数量
-  num_rounds: 20
-  round_interval: 300  # 每轮训练间隔(秒)
-  
-# FedAvg特定配置
-fedavg:
-  participation_rate: 0.8  # 每轮参与比例
-  
 
-# 数据配置
+# Federated learning configuration
+fl:
+  num_satellites: 66         # Total number of satellites
+  satellites_per_orbit: 11   # Satellites per orbital plane
+  num_orbits: 6              # Number of orbital planes
+  num_rounds: 20             # Number of FL communication rounds
+  round_interval: 300        # Simulated seconds between rounds
+
+# FedAvg-specific configuration
+fedavg:
+  participation_rate: 0.8    # Fraction of satellites participating per round
+
+# Data configuration
+# Set csv_path to your local traffic dataset CSV file
 data:
   dataset: "real_traffic"
-  csv_path: "/Users/lyb/Downloads/gitProjects/STI/merged_traffic_data_20250305_111338.csv"
-  # csv_path: "/Users/lyb/Downloads/gitProjects/STI/merged_traffic_data_20250305_111338.csv"
-  test_size: 0.2                     # 测试集比例
-  iid: true                          # 是否使用IID分布
-  alpha: 0.6                         # Dirichlet参数（仅在non-iid时使用）
+  csv_path: "data/traffic_data.csv"   # <-- update this path
+  test_size: 0.2             # Fraction of data for testing
+  iid: true                  # true = IID split; false = non-IID (Dirichlet)
+  alpha: 0.6                 # Dirichlet alpha (used only when iid: false)
 
-
-
-# 模型配置
+# Model configuration
 model:
   type: "traffic_classifier"
   hidden_dim: 64
   batch_size: 32
   learning_rate: 0.001
   momentum: 0.9
-  
-# 客户端配置
+
+# Client configuration
 client:
   batch_size: 32
   local_epochs: 5
@@ -48,7 +47,7 @@ client:
   compute_capacity: 1.0
   storage_capacity: 1000.0
 
-# 聚合配置
+# Aggregation configuration
 aggregation:
   min_updates: 2
   max_staleness: 300.0

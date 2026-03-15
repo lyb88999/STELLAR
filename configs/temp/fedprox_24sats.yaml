@@ -12,7 +12,7 @@ client:
   weight_decay: 0.0001
 data:
   alpha: 0.5
-  csv_path: /Users/lyb/Downloads/gitProjects/STI/merged_traffic_data_20250305_111338.csv
+  csv_path: data/traffic_data.csv   # <-- update this path
   dataset: real_traffic
   dirichlet_alpha: 0.5
   iid: true

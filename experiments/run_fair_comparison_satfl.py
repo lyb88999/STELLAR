@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-公平对比实验 - 比较SDA-FL、FedAvg、FedProx与相似度分组算法
+公平对比实验 - 比较SDA-FL、FedAvg、FedProx与STELLAR算法
 """
 
 import os
@@ -109,8 +109,8 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
     fedavg_sats = np.mean(fedavg_stats['satellite_stats']['training_satellites'])
     similarity_sats = np.mean(similarity_stats['satellite_stats']['training_satellites'])
     
-    # 准备图表标题
-    title_suffix = f"(SDA-FL: {satfl_sats:.1f}, FedProx: {fedprox_sats:.1f}, FedAvg: {fedavg_sats:.1f}, Similarity: {similarity_sats:.1f} satellites)"
+    # 准备图表标题 - 简洁版本
+    title_suffix = ""
     
     # 应用自定义样式
     style = {
@@ -140,20 +140,12 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
         'legend.fontsize': style['legend_fontsize']
     })
     
-    # 定义算法颜色和标记
-    offsets = {
-        'SDA-FL': 0.3,
-        'FedProx': 0.1, 
-        'FedAvg': -0.1,
-        'Similarity': -0.3
-    }
-    
     # 算法样式定义
     algo_styles = {
         'SDA-FL': {'color': 'purple', 'marker': '*', 'label': 'SDA-FL'},
         'FedProx': {'color': 'g', 'marker': 'o', 'label': 'FedProx'},
         'FedAvg': {'color': 'b', 'marker': 's', 'label': 'FedAvg'},
-        'Similarity': {'color': 'r', 'marker': '^', 'label': 'Similarity Grouping'}
+        'Similarity': {'color': 'r', 'marker': '^', 'label': 'STELLAR'}
     }
     
     # 1. 准确率对比
@@ -182,8 +174,8 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
              label=algo_styles['Similarity']['label'],
              linewidth=style['linewidth'],
              markersize=style['marker_size'])
-    plt.title(f'Accuracy Comparison {title_suffix}')
-    plt.xlabel('Round')
+    plt.title(f'Classification Accuracy Performance Analysis {title_suffix}')
+    plt.xlabel('Communication Round')
     plt.ylabel('Accuracy (%)')
     plt.legend()
     if show_grid:
@@ -222,9 +214,9 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
                  label=algo_styles['Similarity']['label'],
                  linewidth=style['linewidth'],
                  markersize=style['marker_size'])
-    plt.title(f'F1 Score (Macro) Comparison {title_suffix}')
-    plt.xlabel('Round')
-    plt.ylabel('F1 Score (%)')
+    plt.title(f'Macro-averaged F1-Score Performance Evaluation {title_suffix}')
+    plt.xlabel('Communication Round')
+    plt.ylabel('F1-Score (%)')
     plt.legend()
     if show_grid:
         plt.grid(alpha=style['grid_alpha'], linestyle=style['grid_linestyle'])
@@ -262,8 +254,8 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
                  label=algo_styles['Similarity']['label'],
                  linewidth=style['linewidth'],
                  markersize=style['marker_size'])
-    plt.title(f'Precision (Macro) Comparison {title_suffix}')
-    plt.xlabel('Round')
+    plt.title(f'Macro-averaged Precision Performance Analysis {title_suffix}')
+    plt.xlabel('Communication Round')
     plt.ylabel('Precision (%)')
     plt.legend()
     if show_grid:
@@ -302,8 +294,8 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
                  label=algo_styles['Similarity']['label'],
                  linewidth=style['linewidth'],
                  markersize=style['marker_size'])
-    plt.title(f'Recall (Macro) Comparison {title_suffix}')
-    plt.xlabel('Round')
+    plt.title(f'Macro-averaged Recall Performance Evaluation {title_suffix}')
+    plt.xlabel('Communication Round')
     plt.ylabel('Recall (%)')
     plt.legend()
     if show_grid:
@@ -343,8 +335,8 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
                     label=algo_styles['Similarity']['label'],
                     linewidth=style['linewidth'],
                     markersize=style['marker_size'])
-    axes[0, 0].set_title('Accuracy (%)')
-    axes[0, 0].set_xlabel('Round')
+    axes[0, 0].set_title('Classification Accuracy')
+    axes[0, 0].set_xlabel('Communication Round')
     axes[0, 0].set_ylabel('Accuracy (%)')
     if show_grid:
         axes[0, 0].grid(alpha=style['grid_alpha'], linestyle=style['grid_linestyle'])
@@ -375,9 +367,9 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
                         label=algo_styles['Similarity']['label'],
                         linewidth=style['linewidth'],
                         markersize=style['marker_size'])
-    axes[0, 1].set_title('F1 Score (Macro)')
-    axes[0, 1].set_xlabel('Round')
-    axes[0, 1].set_ylabel('F1 Score (%)')
+    axes[0, 1].set_title('Macro F1-Score')
+    axes[0, 1].set_xlabel('Communication Round')
+    axes[0, 1].set_ylabel('F1-Score (%)')
     if show_grid:
         axes[0, 1].grid(alpha=style['grid_alpha'], linestyle=style['grid_linestyle'])
     
@@ -407,8 +399,8 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
                         label=algo_styles['Similarity']['label'],
                         linewidth=style['linewidth'],
                         markersize=style['marker_size'])
-    axes[1, 0].set_title('Precision (Macro)')
-    axes[1, 0].set_xlabel('Round')
+    axes[1, 0].set_title('Macro Precision')
+    axes[1, 0].set_xlabel('Communication Round')
     axes[1, 0].set_ylabel('Precision (%)')
     if show_grid:
         axes[1, 0].grid(alpha=style['grid_alpha'], linestyle=style['grid_linestyle'])
@@ -439,14 +431,14 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
                         label=algo_styles['Similarity']['label'],
                         linewidth=style['linewidth'],
                         markersize=style['marker_size'])
-    axes[1, 1].set_title('Recall (Macro)')
-    axes[1, 1].set_xlabel('Round')
+    axes[1, 1].set_title('Macro Recall')
+    axes[1, 1].set_xlabel('Communication Round')
     axes[1, 1].set_ylabel('Recall (%)')
     if show_grid:
         axes[1, 1].grid(alpha=style['grid_alpha'], linestyle=style['grid_linestyle'])
     
     # 添加总标题和图例
-    fig.suptitle(f'Classification Metrics Comparison {title_suffix}', fontsize=16, y=0.98)
+    fig.suptitle(f'Comprehensive Classification Performance Assessment {title_suffix}', fontsize=16, y=0.98)
     
     # 在图的底部添加通用图例
     handles, labels = axes[0, 0].get_legend_handles_labels()
@@ -483,9 +475,9 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
              label=algo_styles['Similarity']['label'],
              linewidth=style['linewidth'],
              markersize=style['marker_size'])
-    plt.title(f'Loss Comparison {title_suffix}')
-    plt.xlabel('Round')
-    plt.ylabel('Loss')
+    plt.title(f'Convergence Analysis: Training Loss Comparison {title_suffix}')
+    plt.xlabel('Communication Round')
+    plt.ylabel('Training Loss')
     plt.legend()
     if show_grid:
         plt.grid(alpha=style['grid_alpha'], linestyle=style['grid_linestyle'])
@@ -519,9 +511,9 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
              label=algo_styles['Similarity']['label'],
              linewidth=style['linewidth'],
              markersize=style['marker_size'])
-    plt.title(f'Training Energy Consumption {title_suffix}')
-    plt.xlabel('Round')
-    plt.ylabel('Energy (Wh)')
+    plt.title(f'Computational Energy Consumption Analysis {title_suffix}')
+    plt.xlabel('Communication Round')
+    plt.ylabel('Training Energy (Wh)')
     plt.legend()
     if show_grid:
         plt.grid(alpha=style['grid_alpha'], linestyle=style['grid_linestyle'])
@@ -555,9 +547,9 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
              label=algo_styles['Similarity']['label'],
              linewidth=style['linewidth'],
              markersize=style['marker_size'])
-    plt.title(f'Communication Energy Consumption {title_suffix}')
-    plt.xlabel('Round')
-    plt.ylabel('Energy (Wh)')
+    plt.title(f'Communication Energy Cost Analysis {title_suffix}')
+    plt.xlabel('Communication Round')
+    plt.ylabel('Communication Energy (Wh)')
     plt.legend()
     if show_grid:
         plt.grid(alpha=style['grid_alpha'], linestyle=style['grid_linestyle'])
@@ -591,9 +583,9 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
              label=algo_styles['Similarity']['label'],
              linewidth=style['linewidth'],
              markersize=style['marker_size'])
-    plt.title(f'Total Energy Consumption {title_suffix}')
-    plt.xlabel('Round')
-    plt.ylabel('Energy (Wh)')
+    plt.title(f'Total Energy Efficiency Assessment {title_suffix}')
+    plt.xlabel('Communication Round')
+    plt.ylabel('Total Energy (Wh)')
     plt.legend()
     if show_grid:
         plt.grid(alpha=style['grid_alpha'], linestyle=style['grid_linestyle'])
@@ -636,8 +628,8 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
              label=algo_styles['Similarity']['label'],
              linewidth=style['linewidth'],
              markersize=style['marker_size'])
-    plt.title(f'Energy Efficiency (Accuracy/Energy) {title_suffix}')
-    plt.xlabel('Round')
+    plt.title(f'Energy-Performance Efficiency Analysis {title_suffix}')
+    plt.xlabel('Communication Round')
     plt.ylabel('Efficiency (%/Wh)')
     plt.legend()
     if show_grid:
@@ -653,44 +645,42 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
     plt.rcParams['axes.unicode_minus'] = False
     plt.figure(figsize=style['figsize'])
     
-    # 对每个算法应用偏移显示，使用相同的线型
-    for algo_name, data, style_name in [
-        ('SDA-FL', satfl_stats['satellite_stats']['training_satellites'], 'SDA-FL'),
-        ('FedProx', fedprox_stats['satellite_stats']['training_satellites'], 'FedProx'),
-        ('FedAvg', fedavg_stats['satellite_stats']['training_satellites'], 'FedAvg'),
-        ('Similarity', similarity_stats['satellite_stats']['training_satellites'], 'Similarity')
-    ]:
-        # 创建带偏移的数据副本
-        offset_data = [val + offsets[style_name] for val in data]
-        
-        plt.plot(offset_data, 
-             color=algo_styles[style_name]['color'], 
-             marker=algo_styles[style_name]['marker'], 
-             label=algo_styles[style_name]['label'],
+    # 直接绘制各算法的训练卫星数据，不使用偏移
+    plt.plot(satfl_stats['satellite_stats']['training_satellites'], 
+             color=algo_styles['SDA-FL']['color'], 
+             marker=algo_styles['SDA-FL']['marker'], 
+             label=algo_styles['SDA-FL']['label'],
              linewidth=style['linewidth'],
-             markersize=style['marker_size'],
-             markevery=2)  # 减少标记数量以避免拥挤
+             markersize=style['marker_size'])
+    plt.plot(fedprox_stats['satellite_stats']['training_satellites'], 
+             color=algo_styles['FedProx']['color'], 
+             marker=algo_styles['FedProx']['marker'], 
+             label=algo_styles['FedProx']['label'],
+             linewidth=style['linewidth'],
+             markersize=style['marker_size'])
+    plt.plot(fedavg_stats['satellite_stats']['training_satellites'], 
+             color=algo_styles['FedAvg']['color'], 
+             marker=algo_styles['FedAvg']['marker'], 
+             label=algo_styles['FedAvg']['label'],
+             linewidth=style['linewidth'],
+             markersize=style['marker_size'])
+    plt.plot(similarity_stats['satellite_stats']['training_satellites'], 
+             color=algo_styles['Similarity']['color'], 
+             marker=algo_styles['Similarity']['marker'], 
+             label=algo_styles['Similarity']['label'],
+             linewidth=style['linewidth'],
+             markersize=style['marker_size'])
     
-    # 添加说明文本，解释偏移显示
-    plt.text(0.02, 0.02, "注：应用了垂直偏移以区分重叠的线条。\n实际数据值见表名。", 
-             transform=plt.gca().transAxes, fontsize=9,
-             bbox=dict(facecolor='white', alpha=0.7))
-    
-    # 添加参考线，显示实际数据值
-    plt.axhline(y=24, color='gray', linestyle='--', alpha=0.3, linewidth=1)
-    plt.axhline(y=19.8, color='gray', linestyle='--', alpha=0.3, linewidth=1)
-    
-    # 其他代码保持不变
-    plt.title(f'Number of Training Satellites {title_suffix}')
-    plt.xlabel('Round')
-    plt.ylabel('Number of Satellites')
+    plt.title(f'Resource Utilization: Active Satellite Count {title_suffix}')
+    plt.xlabel('Communication Round')
+    plt.ylabel('Number of Active Satellites')
     plt.legend()
     if show_grid:
         plt.grid(alpha=style['grid_alpha'], linestyle=style['grid_linestyle'])
     plt.tight_layout()
     plt.savefig(f"{output_dir}/training_satellites_comparison.{style['save_format']}", dpi=style['dpi'])
     plt.close()
-
+    
     # 8. 通信开销对比
     plt.figure(figsize=style['figsize'])
     satfl_comm = calculate_communication_overhead(satfl_stats)
@@ -722,8 +712,8 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
              label=algo_styles['Similarity']['label'],
              linewidth=style['linewidth'],
              markersize=style['marker_size'])
-    plt.title(f'Cumulative Communication Overhead {title_suffix}')
-    plt.xlabel('Round')
+    plt.title(f'Cumulative Communication Cost Assessment {title_suffix}')
+    plt.xlabel('Communication Round')
     plt.ylabel('Cumulative Communication Energy (Wh)')
     plt.legend()
     if show_grid:
@@ -731,7 +721,7 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
     plt.tight_layout()
     plt.savefig(f"{output_dir}/communication_overhead.{style['save_format']}", dpi=style['dpi'])
     plt.close()
-
+    
     # 9. 能效比对比 (准确率/累积能耗)
     plt.figure(figsize=style['figsize'])
     
@@ -774,8 +764,8 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
              label=algo_styles['Similarity']['label'],
              linewidth=style['linewidth'],
              markersize=style['marker_size'])
-    plt.title(f'Energy Efficiency (Accuracy/Cumulative Energy) {title_suffix}')
-    plt.xlabel('Round')
+    plt.title(f'Cumulative Energy-Performance Efficiency {title_suffix}')
+    plt.xlabel('Communication Round')
     plt.ylabel('Efficiency (%/Wh)')
     plt.legend()
     if show_grid:
@@ -815,9 +805,9 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
                  label=algo_styles['Similarity']['label'],
                  linewidth=style['linewidth'],
                  markersize=style['marker_size'])
-    plt.title(f'F1 Score (Weighted) Comparison {title_suffix}')
-    plt.xlabel('Round')
-    plt.ylabel('F1 Score (%)')
+    plt.title(f'Weighted F1-Score Performance Evaluation {title_suffix}')
+    plt.xlabel('Communication Round')
+    plt.ylabel('F1-Score (%)')
     plt.legend()
     if show_grid:
         plt.grid(alpha=style['grid_alpha'], linestyle=style['grid_linestyle'])
@@ -855,8 +845,8 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
                  label=algo_styles['Similarity']['label'],
                  linewidth=style['linewidth'],
                  markersize=style['marker_size'])
-    plt.title(f'Precision (Weighted) Comparison {title_suffix}')
-    plt.xlabel('Round')
+    plt.title(f'Weighted Precision Performance Analysis {title_suffix}')
+    plt.xlabel('Communication Round')
     plt.ylabel('Precision (%)')
     plt.legend()
     if show_grid:
@@ -895,8 +885,8 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
                  label=algo_styles['Similarity']['label'],
                  linewidth=style['linewidth'],
                  markersize=style['marker_size'])
-    plt.title(f'Recall (Weighted) Comparison {title_suffix}')
-    plt.xlabel('Round')
+    plt.title(f'Weighted Recall Performance Evaluation {title_suffix}')
+    plt.xlabel('Communication Round')
     plt.ylabel('Recall (%)')
     plt.legend()
     if show_grid:
@@ -935,9 +925,9 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
                         label=algo_styles['Similarity']['label'],
                         linewidth=style['linewidth'],
                         markersize=style['marker_size'])
-    axes[0, 0].set_title('F1 Score (Weighted)')
-    axes[0, 0].set_xlabel('Round')
-    axes[0, 0].set_ylabel('F1 Score (%)')
+    axes[0, 0].set_title('Weighted F1-Score')
+    axes[0, 0].set_xlabel('Communication Round')
+    axes[0, 0].set_ylabel('F1-Score (%)')
     if show_grid:
         axes[0, 0].grid(alpha=style['grid_alpha'], linestyle=style['grid_linestyle'])
     
@@ -967,8 +957,8 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
                         label=algo_styles['Similarity']['label'],
                         linewidth=style['linewidth'],
                         markersize=style['marker_size'])
-    axes[0, 1].set_title('Precision (Weighted)')
-    axes[0, 1].set_xlabel('Round')
+    axes[0, 1].set_title('Weighted Precision')
+    axes[0, 1].set_xlabel('Communication Round')
     axes[0, 1].set_ylabel('Precision (%)')
     if show_grid:
         axes[0, 1].grid(alpha=style['grid_alpha'], linestyle=style['grid_linestyle'])
@@ -999,8 +989,8 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
                         label=algo_styles['Similarity']['label'],
                         linewidth=style['linewidth'],
                         markersize=style['marker_size'])
-    axes[1, 0].set_title('Recall (Weighted)')
-    axes[1, 0].set_xlabel('Round')
+    axes[1, 0].set_title('Weighted Recall')
+    axes[1, 0].set_xlabel('Communication Round')
     axes[1, 0].set_ylabel('Recall (%)')
     if show_grid:
         axes[1, 0].grid(alpha=style['grid_alpha'], linestyle=style['grid_linestyle'])
@@ -1030,14 +1020,14 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
                     label=algo_styles['Similarity']['label'],
                     linewidth=style['linewidth'],
                     markersize=style['marker_size'])
-    axes[1, 1].set_title('Accuracy (Reference)')
-    axes[1, 1].set_xlabel('Round')
+    axes[1, 1].set_title('Classification Accuracy')
+    axes[1, 1].set_xlabel('Communication Round')
     axes[1, 1].set_ylabel('Accuracy (%)')
     if show_grid:
         axes[1, 1].grid(alpha=style['grid_alpha'], linestyle=style['grid_linestyle'])
     
     # 添加总标题和图例
-    fig.suptitle(f'Weighted Classification Metrics Comparison {title_suffix}', fontsize=16, y=0.98)
+    fig.suptitle(f'Weighted Classification Performance Assessment {title_suffix}', fontsize=16, y=0.98)
     
     # 在图的底部添加通用图例
     handles, labels = axes[0, 0].get_legend_handles_labels()
@@ -1051,99 +1041,89 @@ def create_comparison_plots(satfl_stats, fedprox_stats, fedavg_stats, similarity
     logger.info(f"图表生成完成，保存在 {output_dir}/ 目录")
 
 def save_experiment_data(output_dir, satfl_stats, fedprox_stats, fedavg_stats, similarity_stats, timestamp):
-    """保存实验数据，以便后续重新绘图"""
-    data_dir = os.path.join(output_dir, 'raw_data')
-    os.makedirs(data_dir, exist_ok=True)
+    """保存实验数据到pickle文件和生成简要报告"""
     
-    # 将统计数据转换为可序列化的格式
     def prepare_for_serialization(stats_dict):
         # 深复制以避免修改原始数据
-        serializable_stats = copy.deepcopy(stats_dict)
+        import copy
+        serializable_dict = copy.deepcopy(stats_dict)
         
-        # 将numpy数组转换为列表
-        for key, value in serializable_stats.items():
-            if isinstance(value, np.ndarray):
-                serializable_stats[key] = value.tolist()
-            elif isinstance(value, dict):
-                for k, v in value.items():
-                    if isinstance(v, np.ndarray):
-                        serializable_stats[key][k] = v.tolist()
-        return serializable_stats
-    
-    # 准备数据
-    satfl_data = prepare_for_serialization(satfl_stats)
-    fedprox_data = prepare_for_serialization(fedprox_stats)
-    fedavg_data = prepare_for_serialization(fedavg_stats)
-    similarity_data = prepare_for_serialization(similarity_stats)
-    
-    # 保存为pickle格式(包含完整数据)
-    with open(os.path.join(data_dir, 'experiment_data.pkl'), 'wb') as f:
-        pickle.dump({
-            'satfl': satfl_data,
-            'fedprox': fedprox_data,
-            'fedavg': fedavg_data,
-            'similarity': similarity_data,
-            'timestamp': timestamp,
-            'metadata': {
-                'creation_time': datetime.now().isoformat(),
-                'description': '公平对比实验数据'
-            }
-        }, f)
-    
-    # 同时保存为JSON格式(便于查看和跨平台使用)
-    try:
-        with open(os.path.join(data_dir, 'experiment_data.json'), 'w', encoding='utf-8') as f:
-            json.dump({
-                'satfl': satfl_data,
-                'fedprox': fedprox_data,
-                'fedavg': fedavg_data,
-                'similarity': similarity_data,
-                'timestamp': timestamp,
-                'metadata': {
-                    'creation_time': datetime.now().isoformat(),
-                    'description': '公平对比实验数据'
-                }
-            }, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        logger.warning(f"无法保存为JSON格式: {str(e)}")
-    
-    # 保存实验配置
-    try:
-        with open(os.path.join(data_dir, 'satfl_config.yaml'), 'w') as f:
-            with open("configs/sda_fl_config.yaml", 'r') as src:
-                f.write(src.read())
-                
-        with open(os.path.join(data_dir, 'fedprox_config.yaml'), 'w') as f:
-            with open(f"configs/temp/fedprox_{fedprox_stats['satellite_stats']['training_satellites'][0]}sats.yaml", 'r') as src:
-                f.write(src.read())
-                
-        with open(os.path.join(data_dir, 'fedavg_config.yaml'), 'w') as f:
-            with open(f"configs/temp/fedavg_{fedavg_stats['satellite_stats']['training_satellites'][0]}sats.yaml", 'r') as src:
-                f.write(src.read())
-                
-        with open(os.path.join(data_dir, 'similarity_config.yaml'), 'w') as f:
-            with open("configs/similarity_grouping_config.yaml", 'r') as src:
-                f.write(src.read())
-    except Exception as e:
-        logger.warning(f"无法保存配置文件: {str(e)}")
-    
-    # 创建元数据文件，记录关键指标，便于快速查看
-    with open(os.path.join(data_dir, 'metadata.txt'), 'w') as f:
-        f.write(f"实验时间: {timestamp}\n\n")
+        def convert_tensors(obj):
+            if isinstance(obj, torch.Tensor):
+                return obj.detach().cpu().numpy()
+            elif isinstance(obj, dict):
+                return {k: convert_tensors(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_tensors(item) for item in obj]
+            else:
+                return obj
         
-        f.write("平均卫星数量:\n")
-        f.write(f"  SDA-FL: {np.mean(satfl_stats['satellite_stats']['training_satellites']):.2f}\n")
-        f.write(f"  FedProx: {np.mean(fedprox_stats['satellite_stats']['training_satellites']):.2f}\n")
-        f.write(f"  FedAvg: {np.mean(fedavg_stats['satellite_stats']['training_satellites']):.2f}\n")
-        f.write(f"  相似度分组: {np.mean(similarity_stats['satellite_stats']['training_satellites']):.2f}\n\n")
-        
-        f.write("最终准确率:\n")
-        f.write(f"  SDA-FL: {max(satfl_stats['accuracies']):.2f}%\n")
-        f.write(f"  FedProx: {max(fedprox_stats['accuracies']):.2f}%\n")
-        f.write(f"  FedAvg: {max(fedavg_stats['accuracies']):.2f}%\n")
-        f.write(f"  相似度分组: {max(similarity_stats['accuracies']):.2f}%\n")
+        return convert_tensors(serializable_dict)
     
-    logger.info(f"实验数据已保存到 {data_dir}/")
+    # 安全获取最大值的函数
+    def safe_max(lst, default=0.0):
+        return max(lst) if lst and len(lst) > 0 else default
+    
+    def safe_min(lst, default=0.0):
+        return min(lst) if lst and len(lst) > 0 else default
+    
+    # 确保output_dir是Path对象
+    from pathlib import Path
+    output_dir = Path(output_dir)
+    
+    # 创建raw_data目录
+    raw_data_dir = output_dir / "raw_data"
+    raw_data_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 准备数据进行序列化
+    experiment_data = {
+        'satfl': prepare_for_serialization(satfl_stats) if satfl_stats else {},
+        'fedprox': prepare_for_serialization(fedprox_stats) if fedprox_stats else {},
+        'fedavg': prepare_for_serialization(fedavg_stats) if fedavg_stats else {},
+        'similarity': prepare_for_serialization(similarity_stats) if similarity_stats else {},
+        'timestamp': timestamp
+    }
+    
+    # 保存到pickle文件
+    with open(raw_data_dir / "experiment_data.pkl", 'wb') as f:
+        pickle.dump(experiment_data, f)
+    
+    # 生成简要报告
+    with open(output_dir / "summary.txt", 'w', encoding='utf-8') as f:
+        f.write(f"实验比较总结 - {timestamp}\n")
+        f.write("="*50 + "\n\n")
+        
+        f.write("最高准确率:\n")
+        f.write(f"  SDA-FL: {safe_max(satfl_stats['accuracies'] if satfl_stats else []):.2f}%\n")
+        f.write(f"  FedProx: {safe_max(fedprox_stats['accuracies'] if fedprox_stats else []):.2f}%\n")
+        f.write(f"  FedAvg: {safe_max(fedavg_stats['accuracies'] if fedavg_stats else []):.2f}%\n")
+        f.write(f"  STELLAR: {safe_max(similarity_stats['accuracies'] if similarity_stats else []):.2f}%\n")
+        f.write("\n")
+        
+        # 检查是否有新指标数据
+        has_new_metrics = any([
+            stats and 'f1_macros' in stats for stats in [satfl_stats, fedprox_stats, fedavg_stats, similarity_stats]
+            if stats is not None
+        ])
+        
+        if has_new_metrics:
+            f.write("最高F1分数 (Macro):\n")
+            f.write(f"  SDA-FL: {safe_max(satfl_stats.get('f1_macros', []) if satfl_stats else []):.2f}%\n")
+            f.write(f"  FedProx: {safe_max(fedprox_stats.get('f1_macros', []) if fedprox_stats else []):.2f}%\n")
+            f.write(f"  FedAvg: {safe_max(fedavg_stats.get('f1_macros', []) if fedavg_stats else []):.2f}%\n")
+            f.write(f"  STELLAR: {safe_max(similarity_stats.get('f1_macros', []) if similarity_stats else []):.2f}%\n")
+        else:
+            f.write("注意: 本次实验数据不包含详细的分类指标（F1、精确率、召回率）\n")
+            f.write("如需这些指标，请重新运行实验。\n")
+        
+        # 实验状态
+        f.write("\n实验状态:\n")
+        f.write(f"  SDA-FL: {'成功' if satfl_stats else '失败'}\n")
+        f.write(f"  FedProx: {'成功' if fedprox_stats else '失败'}\n")
+        f.write(f"  FedAvg: {'成功' if fedavg_stats else '失败'}\n")
+        f.write(f"  STELLAR: {'成功' if similarity_stats else '失败'}\n")
+    
+    print(f"实验数据已保存到: {output_dir}")
 
 def load_experiment_data(data_dir):
     """加载保存的实验数据"""
@@ -1172,7 +1152,7 @@ def parse_args():
     """解析命令行参数"""
     parser = argparse.ArgumentParser(description='运行公平对比实验或重新绘制已有实验的图表')
     parser.add_argument('--target-sats', type=int, default=0,
-                      help='目标卫星数量 (0表示使用相似度分组的平均卫星数)')
+                      help='目标卫星数量 (0表示使用STELLAR的平均卫星数)')
     parser.add_argument('--fedprox-mu', type=float, default=0.01,
                       help='FedProx的接近性参数μ')
     parser.add_argument('--config-dir', type=str, default='configs',
@@ -1199,241 +1179,335 @@ def parse_args():
     
     return parser.parse_args()
 
-def generate_comparison_report(satfl_stats, fedprox_stats, fedavg_stats, similarity_stats, output_path):
-    """生成对比报告"""
-    # 确保目录存在
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+def generate_comparison_report(satfl_stats, fedprox_stats, fedavg_stats, similarity_stats, 
+                              satfl_config_path, fedprox_config_path, similarity_config_path, output_dir):
+    """生成详细的比较报告"""
     
-    # 计算各种指标
-    satfl_max_acc = max(satfl_stats['accuracies'])
-    fedprox_max_acc = max(fedprox_stats['accuracies'])
-    fedavg_max_acc = max(fedavg_stats['accuracies'])
-    similarity_max_acc = max(similarity_stats['accuracies'])
+    # 加载配置文件
+    def load_config(config_path):
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f)
+        except Exception as e:
+            logger.warning(f"无法加载配置文件 {config_path}: {str(e)}")
+            return {}
     
-    # 计算F1分数（如果有的话）
-    satfl_max_f1 = max(satfl_stats.get('f1_macros', [0])) if satfl_stats.get('f1_macros') else 0
-    fedprox_max_f1 = max(fedprox_stats.get('f1_macros', [0])) if fedprox_stats.get('f1_macros') else 0
-    fedavg_max_f1 = max(fedavg_stats.get('f1_macros', [0])) if fedavg_stats.get('f1_macros') else 0
-    similarity_max_f1 = max(similarity_stats.get('f1_macros', [0])) if similarity_stats.get('f1_macros') else 0
+    satfl_config = load_config(satfl_config_path) if isinstance(satfl_config_path, str) else satfl_config_path
+    fedprox_config = load_config(fedprox_config_path) if isinstance(fedprox_config_path, str) else fedprox_config_path
+    similarity_config = load_config(similarity_config_path) if isinstance(similarity_config_path, str) else similarity_config_path
     
-    # 计算精确率（如果有的话）
-    satfl_max_precision = max(satfl_stats.get('precision_macros', [0])) if satfl_stats.get('precision_macros') else 0
-    fedprox_max_precision = max(fedprox_stats.get('precision_macros', [0])) if fedprox_stats.get('precision_macros') else 0
-    fedavg_max_precision = max(fedavg_stats.get('precision_macros', [0])) if fedavg_stats.get('precision_macros') else 0
-    similarity_max_precision = max(similarity_stats.get('precision_macros', [0])) if similarity_stats.get('precision_macros') else 0
+    # 检查是否有新指标数据
+    has_new_metrics = any([
+        'f1_macros' in stats for stats in [satfl_stats, fedprox_stats, fedavg_stats, similarity_stats]
+        if stats is not None
+    ])
     
-    # 计算召回率（如果有的话）
-    satfl_max_recall = max(satfl_stats.get('recall_macros', [0])) if satfl_stats.get('recall_macros') else 0
-    fedprox_max_recall = max(fedprox_stats.get('recall_macros', [0])) if fedprox_stats.get('recall_macros') else 0
-    fedavg_max_recall = max(fedavg_stats.get('recall_macros', [0])) if fedavg_stats.get('recall_macros') else 0
-    similarity_max_recall = max(similarity_stats.get('recall_macros', [0])) if similarity_stats.get('recall_macros') else 0
+    report_lines = [
+        "# 公平对比报告: SDA-FL vs FedProx vs FedAvg vs STELLAR",
+        "",
+    ]
     
-    satfl_avg_sats = np.mean(satfl_stats['satellite_stats']['training_satellites'])
-    fedprox_avg_sats = np.mean(fedprox_stats['satellite_stats']['training_satellites'])
-    fedavg_avg_sats = np.mean(fedavg_stats['satellite_stats']['training_satellites'])
-    similarity_avg_sats = np.mean(similarity_stats['satellite_stats']['training_satellites'])
+    if not has_new_metrics:
+        report_lines.extend([
+            "## ⚠️ 重要说明",
+            "",
+            "当前实验数据不包含详细的分类指标（F1分数、精确率、召回率）。",
+            "这些指标在之前的实验运行中没有被计算和保存。",
+            "如需获取完整的分类指标分析，请重新运行实验：",
+            "",
+            "```bash",
+            "python experiments/run_fair_comparison_satfl.py --num_rounds 20",
+            "```",
+            "",
+        ])
     
-    satfl_energy = sum(satfl_stats['energy_stats']['total_energy'])
-    fedprox_energy = sum(fedprox_stats['energy_stats']['total_energy'])
-    fedavg_energy = sum(fedavg_stats['energy_stats']['total_energy'])
-    similarity_energy = sum(similarity_stats['energy_stats']['total_energy'])
+    # 实验设置部分
+    report_lines.extend([
+        "## 实验设置",
+        f"- SDA-FL 参数 - 合成样本数: {satfl_config.get('sda_fl', {}).get('num_synthetic_samples', 'N/A')}",
+        f"- FedProx 参数 μ: {fedprox_config.get('fedprox', {}).get('mu', 'N/A')}",
+        f"- 总轮次: {satfl_config.get('fl', {}).get('num_rounds', 'N/A')}",
+        "",
+    ])
     
-    # 计算各种效率指标
-    satfl_efficiency = satfl_max_acc / satfl_avg_sats if satfl_avg_sats > 0 else 0
-    fedprox_efficiency = fedprox_max_acc / fedprox_avg_sats if fedprox_avg_sats > 0 else 0
-    fedavg_efficiency = fedavg_max_acc / fedavg_avg_sats if fedavg_avg_sats > 0 else 0
-    similarity_efficiency = similarity_max_acc / similarity_avg_sats if similarity_avg_sats > 0 else 0
+    # 参与卫星数量
+    report_lines.extend([
+        "## 参与卫星数量",
+    ])
     
-    satfl_energy_efficiency = satfl_max_acc / satfl_energy if satfl_energy > 0 else 0
-    fedprox_energy_efficiency = fedprox_max_acc / fedprox_energy if fedprox_energy > 0 else 0
-    fedavg_energy_efficiency = fedavg_max_acc / fedavg_energy if fedavg_energy > 0 else 0
-    similarity_energy_efficiency = similarity_max_acc / similarity_energy if similarity_energy > 0 else 0
+    algorithms = {
+        "SDA-FL": satfl_stats,
+        "FedProx": fedprox_stats,
+        "FedAvg": fedavg_stats,
+        "STELLAR": similarity_stats
+    }
     
-    # 计算F1效率指标
-    satfl_f1_efficiency = satfl_max_f1 / satfl_avg_sats if satfl_avg_sats > 0 else 0
-    fedprox_f1_efficiency = fedprox_max_f1 / fedprox_avg_sats if fedprox_avg_sats > 0 else 0
-    fedavg_f1_efficiency = fedavg_max_f1 / fedavg_avg_sats if fedavg_avg_sats > 0 else 0
-    similarity_f1_efficiency = similarity_max_f1 / similarity_avg_sats if similarity_avg_sats > 0 else 0
-    
-    # 计算收敛速度 (达到90%最终准确率的轮次)
-    def calculate_convergence(accuracies, target_percentage=0.9):
-        target = max(accuracies) * target_percentage
-        for i, acc in enumerate(accuracies):
-            if acc >= target:
-                return i + 1
-        return len(accuracies)  # 如果没有达到，返回总轮次
-    
-    satfl_convergence = calculate_convergence(satfl_stats['accuracies'])
-    fedprox_convergence = calculate_convergence(fedprox_stats['accuracies'])
-    fedavg_convergence = calculate_convergence(fedavg_stats['accuracies'])
-    similarity_convergence = calculate_convergence(similarity_stats['accuracies'])
-    
-    # 计算F1分数收敛速度
-    def calculate_f1_convergence(f1_scores, target_percentage=0.9):
-        if not f1_scores:
-            return float('inf')
-        target = max(f1_scores) * target_percentage
-        for i, f1 in enumerate(f1_scores):
-            if f1 >= target:
-                return i + 1
-        return len(f1_scores)
-    
-    satfl_f1_convergence = calculate_f1_convergence(satfl_stats.get('f1_macros', []))
-    fedprox_f1_convergence = calculate_f1_convergence(fedprox_stats.get('f1_macros', []))
-    fedavg_f1_convergence = calculate_f1_convergence(fedavg_stats.get('f1_macros', []))
-    similarity_f1_convergence = calculate_f1_convergence(similarity_stats.get('f1_macros', []))
-    
-    # 生成报告
-    with open(output_path, 'w') as f:
-        f.write("# 公平对比报告: SDA-FL vs FedProx vs FedAvg vs 相似度分组\n\n")
-        
-        f.write("## 实验设置\n")
-        f.write(f"- SDA-FL 参数 - 合成样本数: {satfl_stats.get('num_synthetic_samples', 1000)}\n")
-        f.write(f"- FedProx 参数 μ: {fedprox_stats.get('mu', 0.01)}\n")
-        f.write(f"- 总轮次: {len(satfl_stats['accuracies'])}\n\n")
-        
-        f.write("## 参与卫星数量\n")
-        f.write(f"- SDA-FL 平均训练卫星数: {satfl_avg_sats:.2f}\n")
-        f.write(f"- FedProx 平均训练卫星数: {fedprox_avg_sats:.2f}\n")
-        f.write(f"- FedAvg 平均训练卫星数: {fedavg_avg_sats:.2f}\n")
-        f.write(f"- 相似度分组平均训练卫星数: {similarity_avg_sats:.2f}\n\n")
-        
-        f.write("## 分类性能指标\n")
-        f.write("### 准确率性能\n")
-        f.write(f"- SDA-FL 最高准确率: {satfl_max_acc:.2f}%\n")
-        f.write(f"- FedProx 最高准确率: {fedprox_max_acc:.2f}%\n")
-        f.write(f"- FedAvg 最高准确率: {fedavg_max_acc:.2f}%\n")
-        f.write(f"- 相似度分组最高准确率: {similarity_max_acc:.2f}%\n\n")
-        
-        f.write("### F1分数性能 (Macro)\n")
-        f.write(f"- SDA-FL 最高F1分数: {satfl_max_f1:.2f}%\n")
-        f.write(f"- FedProx 最高F1分数: {fedprox_max_f1:.2f}%\n")
-        f.write(f"- FedAvg 最高F1分数: {fedavg_max_f1:.2f}%\n")
-        f.write(f"- 相似度分组最高F1分数: {similarity_max_f1:.2f}%\n\n")
-        
-        f.write("### 精确率性能 (Macro)\n")
-        f.write(f"- SDA-FL 最高精确率: {satfl_max_precision:.2f}%\n")
-        f.write(f"- FedProx 最高精确率: {fedprox_max_precision:.2f}%\n")
-        f.write(f"- FedAvg 最高精确率: {fedavg_max_precision:.2f}%\n")
-        f.write(f"- 相似度分组最高精确率: {similarity_max_precision:.2f}%\n\n")
-        
-        f.write("### 召回率性能 (Macro)\n")
-        f.write(f"- SDA-FL 最高召回率: {satfl_max_recall:.2f}%\n")
-        f.write(f"- FedProx 最高召回率: {fedprox_max_recall:.2f}%\n")
-        f.write(f"- FedAvg 最高召回率: {fedavg_max_recall:.2f}%\n")
-        f.write(f"- 相似度分组最高召回率: {similarity_max_recall:.2f}%\n\n")
-        
-        f.write("## 性能对比分析\n")
-        f.write(f"- SDA-FL vs FedProx (准确率): {satfl_max_acc - fedprox_max_acc:+.2f}%\n")
-        f.write(f"- SDA-FL vs FedAvg (准确率): {satfl_max_acc - fedavg_max_acc:+.2f}%\n")
-        f.write(f"- SDA-FL vs 相似度分组 (准确率): {satfl_max_acc - similarity_max_acc:+.2f}%\n")
-        f.write(f"- FedProx vs FedAvg (准确率): {fedprox_max_acc - fedavg_max_acc:+.2f}%\n")
-        f.write(f"- FedProx vs 相似度分组 (准确率): {fedprox_max_acc - similarity_max_acc:+.2f}%\n")
-        f.write(f"- 相似度分组 vs FedAvg (准确率): {similarity_max_acc - fedavg_max_acc:+.2f}%\n\n")
-        
-        f.write(f"- SDA-FL vs FedProx (F1分数): {satfl_max_f1 - fedprox_max_f1:+.2f}%\n")
-        f.write(f"- SDA-FL vs FedAvg (F1分数): {satfl_max_f1 - fedavg_max_f1:+.2f}%\n")
-        f.write(f"- SDA-FL vs 相似度分组 (F1分数): {satfl_max_f1 - similarity_max_f1:+.2f}%\n")
-        f.write(f"- FedProx vs FedAvg (F1分数): {fedprox_max_f1 - fedavg_max_f1:+.2f}%\n")
-        f.write(f"- FedProx vs 相似度分组 (F1分数): {fedprox_max_f1 - similarity_max_f1:+.2f}%\n")
-        f.write(f"- 相似度分组 vs FedAvg (F1分数): {similarity_max_f1 - fedavg_max_f1:+.2f}%\n\n")
-        
-        f.write("## 能耗\n")
-        f.write(f"- SDA-FL 总能耗: {satfl_energy:.2f} Wh\n")
-        f.write(f"- FedProx 总能耗: {fedprox_energy:.2f} Wh\n")
-        f.write(f"- FedAvg 总能耗: {fedavg_energy:.2f} Wh\n")
-        f.write(f"- 相似度分组总能耗: {similarity_energy:.2f} Wh\n\n")
-        
-        f.write("## 效率指标\n")
-        f.write("### 卫星效率（每卫星准确率）\n")
-        f.write(f"- SDA-FL 每卫星准确率: {satfl_efficiency:.2f}%\n")
-        f.write(f"- FedProx 每卫星准确率: {fedprox_efficiency:.2f}%\n")
-        f.write(f"- FedAvg 每卫星准确率: {fedavg_efficiency:.2f}%\n")
-        f.write(f"- 相似度分组每卫星准确率: {similarity_efficiency:.2f}%\n\n")
-        
-        f.write("### 卫星F1效率（每卫星F1分数）\n")
-        f.write(f"- SDA-FL 每卫星F1分数: {satfl_f1_efficiency:.2f}%\n")
-        f.write(f"- FedProx 每卫星F1分数: {fedprox_f1_efficiency:.2f}%\n")
-        f.write(f"- FedAvg 每卫星F1分数: {fedavg_f1_efficiency:.2f}%\n")
-        f.write(f"- 相似度分组每卫星F1分数: {similarity_f1_efficiency:.2f}%\n\n")
-        
-        f.write("### 能源效率\n")
-        f.write(f"- SDA-FL 能源效率: {satfl_energy_efficiency:.4f}%/Wh\n")
-        f.write(f"- FedProx 能源效率: {fedprox_energy_efficiency:.4f}%/Wh\n")
-        f.write(f"- FedAvg 能源效率: {fedavg_energy_efficiency:.4f}%/Wh\n")
-        f.write(f"- 相似度分组能源效率: {similarity_energy_efficiency:.4f}%/Wh\n\n")
-        
-        f.write("## 收敛速度\n")
-        f.write("### 准确率收敛速度\n")
-        f.write(f"- SDA-FL 达到90%最高准确率轮次: {satfl_convergence}\n")
-        f.write(f"- FedProx 达到90%最高准确率轮次: {fedprox_convergence}\n")
-        f.write(f"- FedAvg 达到90%最高准确率轮次: {fedavg_convergence}\n")
-        f.write(f"- 相似度分组达到90%最高准确率轮次: {similarity_convergence}\n\n")
-        
-        f.write("### F1分数收敛速度\n")
-        f.write(f"- SDA-FL 达到90%最高F1分数轮次: {satfl_f1_convergence}\n")
-        f.write(f"- FedProx 达到90%最高F1分数轮次: {fedprox_f1_convergence}\n")
-        f.write(f"- FedAvg 达到90%最高F1分数轮次: {fedavg_f1_convergence}\n")
-        f.write(f"- 相似度分组达到90%最高F1分数轮次: {similarity_f1_convergence}\n\n")
-        
-        f.write("## 总结\n")
-        # 添加各个方法的优缺点和总结
-        f.write("### SDA-FL\n")
-        f.write("- **优势**: 使用合成数据增强训练，在数据稀缺情况下能提高准确率。\n")
-        f.write("- **劣势**: 需要训练GAN模型，增加了计算复杂度和能耗。\n\n")
-
-        f.write("### FedProx\n")
-        f.write("- **优势**: 在非IID数据分布下更稳定的收敛性，对数据异质性更鲁棒。\n")
-        f.write("- **劣势**: 额外的计算开销，需要调整接近性参数μ。\n\n")
-        
-        f.write("### FedAvg\n")
-        f.write("- **优势**: 简单，计算开销低。\n")
-        f.write("- **劣势**: 在非IID数据上可能发散，对异质性数据敏感。\n\n")
-        
-        f.write("### 相似度分组\n")
-        f.write("- **优势**: 高效的资源利用，适应数据分布特点，每卫星性能更好。\n")
-        f.write("- **劣势**: 需要计算数据相似度的开销，实现更复杂。\n\n")
-        
-        # 确定哪种方法表现最佳
-        methods = {
-            'SDA-FL': satfl_max_acc,
-            'FedProx': fedprox_max_acc,
-            'FedAvg': fedavg_max_acc,
-            '相似度分组': similarity_max_acc
-        }
-        best_method = max(methods.items(), key=lambda x: x[1])[0]
-        
-        f1_methods = {
-            'SDA-FL': satfl_max_f1,
-            'FedProx': fedprox_max_f1,
-            'FedAvg': fedavg_max_f1,
-            '相似度分组': similarity_max_f1
-        }
-        best_f1_method = max(f1_methods.items(), key=lambda x: x[1])[0]
-            
-        efficiency_methods = {
-            'SDA-FL': satfl_efficiency,
-            'FedProx': fedprox_efficiency,
-            'FedAvg': fedavg_efficiency,
-            '相似度分组': similarity_efficiency
-        }
-        best_efficiency = max(efficiency_methods.items(), key=lambda x: x[1])[0]
-            
-        f.write("### 结论\n")
-        f.write(f"**准确率**: {best_method}在准确率上表现最好 ({methods[best_method]:.2f}%)。\n")
-        f.write(f"**F1分数**: {best_f1_method}在F1分数上表现最好 ({f1_methods[best_f1_method]:.2f}%)。\n")
-        f.write(f"**资源效率**: {best_efficiency}在资源效率上表现最好 ({efficiency_methods[best_efficiency]:.2f}%/satellite)。\n\n")
-        
-        # 综合评估
-        if best_method == best_f1_method and best_method == best_efficiency:
-            f.write(f"{best_method}算法综合表现最佳，在所有指标上都领先。\n")
-        elif best_method == best_f1_method:
-            f.write(f"{best_method}在分类性能（准确率和F1分数）方面表现最佳，而{best_efficiency}在资源效率方面更优。\n")
+    for name, stats in algorithms.items():
+        if stats and 'satellite_stats' in stats and stats['satellite_stats']['training_satellites']:
+            avg_satellites = sum(stats['satellite_stats']['training_satellites']) / len(stats['satellite_stats']['training_satellites'])
+            report_lines.append(f"- {name} 平均训练卫星数: {avg_satellites:.2f}")
         else:
-            f.write(f"需要根据具体场景权衡选择合适的联邦学习算法：\n")
-            f.write(f"- 注重准确率：选择{best_method}\n")
-            f.write(f"- 注重F1分数：选择{best_f1_method}\n")
-            f.write(f"- 注重资源效率：选择{best_efficiency}\n")
+            report_lines.append(f"- {name} 平均训练卫星数: 无数据")
+    
+    report_lines.append("")
+    
+    # 分类性能指标
+    report_lines.extend([
+        "## 分类性能指标",
+        "### 准确率性能",
+    ])
+    
+    for name, stats in algorithms.items():
+        if stats and 'accuracies' in stats and stats['accuracies']:
+            max_acc = max(stats['accuracies'])
+            report_lines.append(f"- {name} 最高准确率: {max_acc:.2f}%")
+        else:
+            report_lines.append(f"- {name} 最高准确率: 无数据")
+    
+    if has_new_metrics:
+        # 只在有新指标时添加这些部分
+        report_lines.extend([
+            "",
+            "### F1分数性能 (Macro)",
+        ])
+        
+        for name, stats in algorithms.items():
+            if stats and 'f1_macros' in stats and stats['f1_macros']:
+                max_f1 = max(stats['f1_macros'])
+                report_lines.append(f"- {name} 最高F1分数: {max_f1:.2f}%")
+            else:
+                report_lines.append(f"- {name} 最高F1分数: 无数据")
+        
+        report_lines.extend([
+            "",
+            "### 精确率性能 (Macro)",
+        ])
+        
+        for name, stats in algorithms.items():
+            if stats and 'precision_macros' in stats and stats['precision_macros']:
+                max_precision = max(stats['precision_macros'])
+                report_lines.append(f"- {name} 最高精确率: {max_precision:.2f}%")
+            else:
+                report_lines.append(f"- {name} 最高精确率: 无数据")
+        
+        report_lines.extend([
+            "",
+            "### 召回率性能 (Macro)",
+        ])
+        
+        for name, stats in algorithms.items():
+            if stats and 'recall_macros' in stats and stats['recall_macros']:
+                max_recall = max(stats['recall_macros'])
+                report_lines.append(f"- {name} 最高召回率: {max_recall:.2f}%")
+            else:
+                report_lines.append(f"- {name} 最高召回率: 无数据")
+    else:
+        # 没有新指标时的说明
+        report_lines.extend([
+            "",
+            "### F1分数、精确率、召回率",
+            "由于当前实验数据不包含详细分类指标，这些指标无法显示。",
+            "请重新运行实验以获取完整的性能分析。",
+        ])
+    
+    # 性能对比分析
+    report_lines.extend([
+        "",
+        "## 性能对比分析",
+    ])
+    
+    # 准确率对比
+    satfl_acc = max(satfl_stats['accuracies']) if satfl_stats['accuracies'] else 0
+    fedprox_acc = max(fedprox_stats['accuracies']) if fedprox_stats['accuracies'] else 0
+    fedavg_acc = max(fedavg_stats['accuracies']) if fedavg_stats['accuracies'] else 0
+    similarity_acc = max(similarity_stats['accuracies']) if similarity_stats['accuracies'] else 0
+    
+    report_lines.extend([
+        f"- SDA-FL vs FedProx (准确率): {satfl_acc - fedprox_acc:+.2f}%",
+        f"- SDA-FL vs FedAvg (准确率): {satfl_acc - fedavg_acc:+.2f}%",
+        f"- SDA-FL vs STELLAR (准确率): {satfl_acc - similarity_acc:+.2f}%",
+        f"- FedProx vs FedAvg (准确率): {fedprox_acc - fedavg_acc:+.2f}%",
+        f"- FedProx vs STELLAR (准确率): {fedprox_acc - similarity_acc:+.2f}%",
+        f"- STELLAR vs FedAvg (准确率): {similarity_acc - fedavg_acc:+.2f}%",
+    ])
+    
+    if has_new_metrics:
+        # F1分数对比
+        satfl_f1 = max(satfl_stats.get('f1_macros', [0])) if satfl_stats.get('f1_macros') else 0
+        fedprox_f1 = max(fedprox_stats.get('f1_macros', [0])) if fedprox_stats.get('f1_macros') else 0
+        fedavg_f1 = max(fedavg_stats.get('f1_macros', [0])) if fedavg_stats.get('f1_macros') else 0
+        similarity_f1 = max(similarity_stats.get('f1_macros', [0])) if similarity_stats.get('f1_macros') else 0
+        
+        report_lines.extend([
+            "",
+            f"- SDA-FL vs FedProx (F1分数): {satfl_f1 - fedprox_f1:+.2f}%",
+            f"- SDA-FL vs FedAvg (F1分数): {satfl_f1 - fedavg_f1:+.2f}%",
+            f"- SDA-FL vs STELLAR (F1分数): {satfl_f1 - similarity_f1:+.2f}%",
+            f"- FedProx vs FedAvg (F1分数): {fedprox_f1 - fedavg_f1:+.2f}%",
+            f"- FedProx vs STELLAR (F1分数): {fedprox_f1 - similarity_f1:+.2f}%",
+            f"- STELLAR vs FedAvg (F1分数): {similarity_f1 - fedavg_f1:+.2f}%",
+        ])
+    
+    # 继续添加其他部分（能耗、效率等）
+    report_lines.extend([
+        "",
+        "## 能耗",
+    ])
+    
+    for name, stats in algorithms.items():
+        if stats and 'energy_stats' in stats and stats['energy_stats']['total_energy']:
+            total_energy = sum(stats['energy_stats']['total_energy'])
+            report_lines.append(f"- {name} 总能耗: {total_energy:.2f} Wh")
+        else:
+            report_lines.append(f"- {name} 总能耗: 无数据")
+    
+    # 效率指标
+    report_lines.extend([
+        "",
+        "## 效率指标",
+        "### 卫星效率（每卫星准确率）",
+    ])
+    
+    for name, stats in algorithms.items():
+        if stats and 'satellite_stats' in stats and stats['satellite_stats']['training_satellites']:
+            avg_satellites = sum(stats['satellite_stats']['training_satellites']) / len(stats['satellite_stats']['training_satellites'])
+            if stats['accuracies']:
+                max_acc = max(stats['accuracies'])
+                efficiency = max_acc / avg_satellites
+                report_lines.append(f"- {name} 每卫星准确率: {efficiency:.2f}%")
+        else:
+            report_lines.append(f"- {name} 每卫星准确率: 无数据")
+    
+    if has_new_metrics:
+        report_lines.extend([
+            "",
+            "### 卫星F1效率（每卫星F1分数）",
+        ])
+        
+        for name, stats in algorithms.items():
+            if stats and 'satellite_stats' in stats and stats['satellite_stats']['training_satellites']:
+                avg_satellites = sum(stats['satellite_stats']['training_satellites']) / len(stats['satellite_stats']['training_satellites'])
+                if stats.get('f1_macros'):
+                    max_f1 = max(stats['f1_macros'])
+                    f1_efficiency = max_f1 / avg_satellites
+                    report_lines.append(f"- {name} 每卫星F1分数: {f1_efficiency:.2f}%")
+                else:
+                    report_lines.append(f"- {name} 每卫星F1分数: 无数据")
+            else:
+                report_lines.append(f"- {name} 每卫星F1分数: 无数据")
+    
+    # 能源效率
+    report_lines.extend([
+        "",
+        "### 能源效率",
+    ])
+    
+    for name, stats in algorithms.items():
+        if stats and 'energy_stats' in stats and stats['energy_stats']['total_energy'] and stats['accuracies']:
+            total_energy = sum(stats['energy_stats']['total_energy'])
+            max_acc = max(stats['accuracies'])
+            energy_efficiency = max_acc / total_energy
+            report_lines.append(f"- {name} 能源效率: {energy_efficiency:.4f}%/Wh")
+        else:
+            report_lines.append(f"- {name} 能源效率: 无数据")
+    
+    # 收敛速度
+    report_lines.extend([
+        "",
+        "## 收敛速度",
+        "### 准确率收敛速度",
+    ])
+    
+    for name, stats in algorithms.items():
+        if stats and 'accuracies' in stats and stats['accuracies']:
+            target_acc = max(stats['accuracies']) * 0.9  # 90%的最高准确率
+            convergence_round = calculate_convergence_speed(stats['accuracies'], target_acc)
+            report_lines.append(f"- {name} 达到90%最高准确率轮次: {convergence_round}")
+        else:
+            report_lines.append(f"- {name} 达到90%最高准确率轮次: 无数据")
+    
+    if has_new_metrics:
+        report_lines.extend([
+            "",
+            "### F1分数收敛速度",
+        ])
+        
+        for name, stats in algorithms.items():
+            if stats and 'f1_macros' in stats and stats['f1_macros']:
+                target_f1 = max(stats['f1_macros']) * 0.9  # 90%的最高F1分数
+                convergence_round = calculate_convergence_speed(stats['f1_macros'], target_f1)
+                report_lines.append(f"- {name} 达到90%最高F1分数轮次: {convergence_round}")
+            else:
+                report_lines.append(f"- {name} 达到90%最高F1分数轮次: 无数据")
+    
+    # 总结
+    report_lines.extend([
+        "",
+        "## 总结",
+        "### SDA-FL",
+        "- **优势**: 使用合成数据增强训练，在数据稀缺情况下能提高准确率。",
+        "- **劣势**: 需要训练GAN模型，增加了计算复杂度和能耗。",
+        "",
+        "### FedProx",
+        "- **优势**: 在非IID数据分布下更稳定的收敛性，对数据异质性更鲁棒。",
+        "- **劣势**: 额外的计算开销，需要调整接近性参数μ。",
+        "",
+        "### FedAvg",
+        "- **优势**: 简单，计算开销低。",
+        "- **劣势**: 在非IID数据上可能发散，对异质性数据敏感。",
+        "",
+        "### STELLAR",
+        "- **优势**: 高效的资源利用，适应数据分布特点，每卫星性能更好。",
+        "- **劣势**: 需要计算数据相似度的开销，实现更复杂。",
+        "",
+        "### 结论",
+    ])
+    
+    # 找出最佳算法
+    best_acc_algo = max(algorithms.keys(), key=lambda name: max(algorithms[name]['accuracies']) if algorithms[name] and algorithms[name].get('accuracies') else 0)
+    best_acc = max(algorithms[best_acc_algo]['accuracies']) if algorithms[best_acc_algo] and algorithms[best_acc_algo].get('accuracies') else 0
+    
+    report_lines.append(f"**准确率**: {best_acc_algo}在准确率上表现最好 ({best_acc:.2f}%)。")
+    
+    if has_new_metrics:
+        best_f1_algo = max(algorithms.keys(), key=lambda name: max(algorithms[name].get('f1_macros', [0])) if algorithms[name] and algorithms[name].get('f1_macros') else 0)
+        best_f1 = max(algorithms[best_f1_algo].get('f1_macros', [0])) if algorithms[best_f1_algo] and algorithms[best_f1_algo].get('f1_macros') else 0
+        report_lines.append(f"**F1分数**: {best_f1_algo}在F1分数上表现最好 ({best_f1:.2f}%)。")
+    
+    # 找出最节能的算法
+    best_efficiency_algo = None
+    best_efficiency = 0
+    for name, stats in algorithms.items():
+        if stats and 'satellite_stats' in stats and stats['satellite_stats']['training_satellites']:
+            avg_satellites = sum(stats['satellite_stats']['training_satellites']) / len(stats['satellite_stats']['training_satellites'])
+            if stats['accuracies']:
+                max_acc = max(stats['accuracies'])
+                efficiency = max_acc / avg_satellites
+                if efficiency > best_efficiency:
+                    best_efficiency = efficiency
+                    best_efficiency_algo = name
+    
+    if best_efficiency_algo:
+        report_lines.append(f"**资源效率**: {best_efficiency_algo}在资源效率上表现最好 ({best_efficiency:.2f}%/satellite)。")
+    
+    if has_new_metrics:
+        report_lines.append(f"\n{best_acc_algo}在分类性能（准确率和F1分数）方面表现最佳，而{best_efficiency_algo}在资源效率方面更优。")
+    else:
+        report_lines.append(f"\n{best_acc_algo}在准确率方面表现最佳，而{best_efficiency_algo}在资源效率方面更优。")
+        report_lines.extend([
+            "",
+            "**注意**: 要获得F1分数、精确率、召回率等详细分类指标的完整分析，",
+            "请使用最新版本的代码重新运行实验。",
+        ])
+    
+    # 保存报告
+    from pathlib import Path
+    output_dir = Path(output_dir)
+    report_path = output_dir / "comparison_report.md"
+    with open(report_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(report_lines))
+    
+    print(f"详细比较报告已保存到: {report_path}")
 
 def create_modified_config(base_config_path, target_satellite_count, output_path):
     """
@@ -1559,21 +1633,21 @@ def run_fair_comparison():
     
     logger.info("=== 开始公平比较实验 ===")
     
-    # 1. 运行相似度分组实验
-    logger.info("\n=== 运行相似度分组实验 ===")
+    # 1. 运行STELLAR实验
+    logger.info("\n=== 运行STELLAR实验 ===")
     similarity_stats, similarity_exp = run_experiment(
         "configs/similarity_grouping_config.yaml", 
         SimilarityGroupingExperiment
     )
     
     if not similarity_stats:
-        logger.error("相似度分组实验失败")
+        logger.error("STELLAR实验失败")
         return
     
-    # 获取相似度分组使用的卫星数量
+    # 获取STELLAR使用的卫星数量
     similarity_sats = similarity_stats['satellite_stats']['training_satellites']
     avg_similarity_sats = np.mean(similarity_sats)
-    logger.info(f"相似度分组平均使用卫星数: {avg_similarity_sats:.2f}")
+    logger.info(f"STELLAR平均使用卫星数: {avg_similarity_sats:.2f}")
     
     # 2. 为FedProx、FedAvg和SDA-FL创建配置文件
     target_sats = 24 if args.target_sats == 0 else args.target_sats
@@ -1664,7 +1738,10 @@ def run_fair_comparison():
         fedprox_stats, 
         fedavg_stats, 
         similarity_stats, 
-        f"{output_dir}/comparison_report.md"
+        satfl_config, 
+        fedprox_config, 
+        "configs/similarity_grouping_config.yaml",  # 使用实际的配置文件路径
+        output_dir
     )
     
     # 8. 打印关键指标
@@ -1676,168 +1753,104 @@ def run_fair_comparison():
     return output_dir
 
 def print_key_metrics(satfl_stats, fedprox_stats, fedavg_stats, similarity_stats):
-    """打印关键指标"""
-    # 计算平均卫星数
-    satfl_sats = np.mean(satfl_stats['satellite_stats']['training_satellites'])
-    fedprox_sats = np.mean(fedprox_stats['satellite_stats']['training_satellites'])
-    fedavg_sats = np.mean(fedavg_stats['satellite_stats']['training_satellites'])
-    similarity_sats = np.mean(similarity_stats['satellite_stats']['training_satellites'])
+    """打印关键指标总结"""
+    print("\n" + "="*80)
+    print("关键指标总结")
+    print("="*80)
     
-    # 获取最高准确率
-    satfl_max_acc = max(satfl_stats['accuracies'])
-    fedprox_max_acc = max(fedprox_stats['accuracies'])
-    fedavg_max_acc = max(fedavg_stats['accuracies'])
-    similarity_max_acc = max(similarity_stats['accuracies'])
+    # 检查是否有新指标数据
+    has_new_metrics = any([
+        'f1_macros' in stats for stats in [satfl_stats, fedprox_stats, fedavg_stats, similarity_stats]
+    ])
     
-    # 获取最高F1分数
-    satfl_max_f1 = max(satfl_stats.get('f1_macros', [0])) if satfl_stats.get('f1_macros') else 0
-    fedprox_max_f1 = max(fedprox_stats.get('f1_macros', [0])) if fedprox_stats.get('f1_macros') else 0
-    fedavg_max_f1 = max(fedavg_stats.get('f1_macros', [0])) if fedavg_stats.get('f1_macros') else 0
-    similarity_max_f1 = max(similarity_stats.get('f1_macros', [0])) if similarity_stats.get('f1_macros') else 0
+    if not has_new_metrics:
+        print("\n⚠️  注意：当前实验数据不包含F1分数、精确率、召回率等详细分类指标")
+        print("   这些指标在之前的实验运行中没有被计算和保存")
+        print("   如需获取完整的分类指标，请重新运行实验")
+        print("   运行命令：python experiments/run_fair_comparison_satfl.py --num_rounds 20")
+        print()
     
-    # 获取最高精确率
-    satfl_max_precision = max(satfl_stats.get('precision_macros', [0])) if satfl_stats.get('precision_macros') else 0
-    fedprox_max_precision = max(fedprox_stats.get('precision_macros', [0])) if fedprox_stats.get('precision_macros') else 0
-    fedavg_max_precision = max(fedavg_stats.get('precision_macros', [0])) if fedavg_stats.get('precision_macros') else 0
-    similarity_max_precision = max(similarity_stats.get('precision_macros', [0])) if similarity_stats.get('precision_macros') else 0
+    algorithms = {
+        "SDA-FL": satfl_stats,
+        "FedProx": fedprox_stats, 
+        "FedAvg": fedavg_stats,
+        "STELLAR": similarity_stats
+    }
     
-    # 获取最高召回率
-    satfl_max_recall = max(satfl_stats.get('recall_macros', [0])) if satfl_stats.get('recall_macros') else 0
-    fedprox_max_recall = max(fedprox_stats.get('recall_macros', [0])) if fedprox_stats.get('recall_macros') else 0
-    fedavg_max_recall = max(fedavg_stats.get('recall_macros', [0])) if fedavg_stats.get('recall_macros') else 0
-    similarity_max_recall = max(similarity_stats.get('recall_macros', [0])) if similarity_stats.get('recall_macros') else 0
+    print("### 准确率性能")
+    best_accuracy = 0
+    best_acc_algo = ""
+    for name, stats in algorithms.items():
+        if stats and 'accuracies' in stats and stats['accuracies']:
+            max_acc = max(stats['accuracies'])
+            print(f"- {name} 最高准确率: {max_acc:.2f}%")
+            if max_acc > best_accuracy:
+                best_accuracy = max_acc
+                best_acc_algo = name
+        else:
+            print(f"- {name} 最高准确率: 无数据")
     
-    # 计算总能耗
-    satfl_energy = sum(satfl_stats['energy_stats']['total_energy'])
-    fedprox_energy = sum(fedprox_stats['energy_stats']['total_energy'])
-    fedavg_energy = sum(fedavg_stats['energy_stats']['total_energy'])
-    similarity_energy = sum(similarity_stats['energy_stats']['total_energy'])
+    if has_new_metrics:
+        # 只有在有新指标数据时才显示这些部分
+        print("\n### F1分数性能 (Macro)")
+        best_f1 = 0
+        best_f1_algo = ""
+        for name, stats in algorithms.items():
+            if stats and 'f1_macros' in stats and stats['f1_macros']:
+                max_f1 = max(stats['f1_macros'])
+                print(f"- {name} 最高F1分数: {max_f1:.2f}%")
+                if max_f1 > best_f1:
+                    best_f1 = max_f1
+                    best_f1_algo = name
+            else:
+                print(f"- {name} 最高F1分数: 无数据")
+
+        print("\n### 精确率性能 (Macro)")
+        for name, stats in algorithms.items():
+            if stats and 'precision_macros' in stats and stats['precision_macros']:
+                max_precision = max(stats['precision_macros'])
+                print(f"- {name} 最高精确率: {max_precision:.2f}%")
+            else:
+                print(f"- {name} 最高精确率: 无数据")
+
+        print("\n### 召回率性能 (Macro)")
+        for name, stats in algorithms.items():
+            if stats and 'recall_macros' in stats and stats['recall_macros']:
+                max_recall = max(stats['recall_macros'])
+                print(f"- {name} 最高召回率: {max_recall:.2f}%")
+            else:
+                print(f"- {name} 最高召回率: 无数据")
     
-    # 计算每卫星准确率
-    satfl_efficiency = satfl_max_acc / satfl_sats if satfl_sats > 0 else 0
-    fedprox_efficiency = fedprox_max_acc / fedprox_sats if fedprox_sats > 0 else 0
-    fedavg_efficiency = fedavg_max_acc / fedavg_sats if fedavg_sats > 0 else 0
-    similarity_efficiency = similarity_max_acc / similarity_sats if similarity_sats > 0 else 0
+    # 能耗对比
+    print("\n### 能耗对比")
+    for name, stats in algorithms.items():
+        if stats and 'energy_stats' in stats and stats['energy_stats']['total_energy']:
+            total_energy = sum(stats['energy_stats']['total_energy'])
+            print(f"- {name} 总能耗: {total_energy:.2f} Wh")
+        else:
+            print(f"- {name} 总能耗: 无数据")
     
-    # 计算每卫星F1分数
-    satfl_f1_efficiency = satfl_max_f1 / satfl_sats if satfl_sats > 0 else 0
-    fedprox_f1_efficiency = fedprox_max_f1 / fedprox_sats if fedprox_sats > 0 else 0
-    fedavg_f1_efficiency = fedavg_max_f1 / fedavg_sats if fedavg_sats > 0 else 0
-    similarity_f1_efficiency = similarity_max_f1 / similarity_sats if similarity_sats > 0 else 0
+    # 效率分析
+    print("\n### 效率分析")
+    for name, stats in algorithms.items():
+        if stats and 'satellite_stats' in stats and stats['satellite_stats']['training_satellites']:
+            avg_satellites = sum(stats['satellite_stats']['training_satellites']) / len(stats['satellite_stats']['training_satellites'])
+            if stats['accuracies']:
+                max_acc = max(stats['accuracies'])
+                efficiency = max_acc / avg_satellites
+                print(f"- {name} 每卫星准确率: {efficiency:.2f}%/satellite")
+            else:
+                print(f"- {name} 每卫星准确率: 无法计算")
+        else:
+            print(f"- {name} 每卫星准确率: 无数据")
     
-    # 打印结果
-    logger.info("\n=== 关键指标对比 ===")
-    logger.info(f"平均卫星数量:")
-    logger.info(f"  SDA-FL: {satfl_sats:.2f}")
-    logger.info(f"  FedProx: {fedprox_sats:.2f}")
-    logger.info(f"  FedAvg: {fedavg_sats:.2f}")
-    logger.info(f"  相似度分组: {similarity_sats:.2f}")
+    print("\n### 最佳算法")
+    print(f"- 准确率最佳: {best_acc_algo} ({best_accuracy:.2f}%)")
     
-    logger.info(f"\n最终准确率:")
-    logger.info(f"  SDA-FL: {satfl_max_acc:.2f}%")
-    logger.info(f"  FedProx: {fedprox_max_acc:.2f}%")
-    logger.info(f"  FedAvg: {fedavg_max_acc:.2f}%")
-    logger.info(f"  相似度分组: {similarity_max_acc:.2f}%")
+    if has_new_metrics and best_f1_algo:
+        print(f"- F1分数最佳: {best_f1_algo} ({best_f1:.2f}%)")
     
-    logger.info(f"\n最高F1分数 (Macro):")
-    logger.info(f"  SDA-FL: {satfl_max_f1:.2f}%")
-    logger.info(f"  FedProx: {fedprox_max_f1:.2f}%")
-    logger.info(f"  FedAvg: {fedavg_max_f1:.2f}%")
-    logger.info(f"  相似度分组: {similarity_max_f1:.2f}%")
-    
-    logger.info(f"\n最高精确率 (Macro):")
-    logger.info(f"  SDA-FL: {satfl_max_precision:.2f}%")
-    logger.info(f"  FedProx: {fedprox_max_precision:.2f}%")
-    logger.info(f"  FedAvg: {fedavg_max_precision:.2f}%")
-    logger.info(f"  相似度分组: {similarity_max_precision:.2f}%")
-    
-    logger.info(f"\n最高召回率 (Macro):")
-    logger.info(f"  SDA-FL: {satfl_max_recall:.2f}%")
-    logger.info(f"  FedProx: {fedprox_max_recall:.2f}%")
-    logger.info(f"  FedAvg: {fedavg_max_recall:.2f}%")
-    logger.info(f"  相似度分组: {similarity_max_recall:.2f}%")
-    
-    logger.info(f"\n总能耗:")
-    logger.info(f"  SDA-FL: {satfl_energy:.2f} Wh")
-    logger.info(f"  FedProx: {fedprox_energy:.2f} Wh")
-    logger.info(f"  FedAvg: {fedavg_energy:.2f} Wh")
-    logger.info(f"  相似度分组: {similarity_energy:.2f} Wh")
-    
-    logger.info(f"\n每卫星准确率:")
-    logger.info(f"  SDA-FL: {satfl_efficiency:.2f}%/satellite")
-    logger.info(f"  FedProx: {fedprox_efficiency:.2f}%/satellite")
-    logger.info(f"  FedAvg: {fedavg_efficiency:.2f}%/satellite")
-    logger.info(f"  相似度分组: {similarity_efficiency:.2f}%/satellite")
-    
-    logger.info(f"\n每卫星F1分数:")
-    logger.info(f"  SDA-FL: {satfl_f1_efficiency:.2f}%/satellite")
-    logger.info(f"  FedProx: {fedprox_f1_efficiency:.2f}%/satellite")
-    logger.info(f"  FedAvg: {fedavg_f1_efficiency:.2f}%/satellite")
-    logger.info(f"  相似度分组: {similarity_f1_efficiency:.2f}%/satellite")
-    
-    # 打印性能排名
-    logger.info(f"\n=== 性能排名 ===")
-    
-    # 准确率排名
-    acc_ranking = sorted([
-        ('SDA-FL', satfl_max_acc),
-        ('FedProx', fedprox_max_acc),
-        ('FedAvg', fedavg_max_acc),
-        ('相似度分组', similarity_max_acc)
-    ], key=lambda x: x[1], reverse=True)
-    
-    logger.info("准确率排名:")
-    for i, (method, acc) in enumerate(acc_ranking, 1):
-        logger.info(f"  {i}. {method}: {acc:.2f}%")
-    
-    # F1分数排名
-    f1_ranking = sorted([
-        ('SDA-FL', satfl_max_f1),
-        ('FedProx', fedprox_max_f1),
-        ('FedAvg', fedavg_max_f1),
-        ('相似度分组', similarity_max_f1)
-    ], key=lambda x: x[1], reverse=True)
-    
-    logger.info("\nF1分数排名:")
-    for i, (method, f1) in enumerate(f1_ranking, 1):
-        logger.info(f"  {i}. {method}: {f1:.2f}%")
-    
-    # 资源效率排名（每卫星准确率）
-    eff_ranking = sorted([
-        ('SDA-FL', satfl_efficiency),
-        ('FedProx', fedprox_efficiency),
-        ('FedAvg', fedavg_efficiency),
-        ('相似度分组', similarity_efficiency)
-    ], key=lambda x: x[1], reverse=True)
-    
-    logger.info("\n资源效率排名 (每卫星准确率):")
-    for i, (method, eff) in enumerate(eff_ranking, 1):
-        logger.info(f"  {i}. {method}: {eff:.2f}%/satellite")
-    
-    # 综合评分（准确率 + F1分数）
-    combined_scores = [
-        ('SDA-FL', satfl_max_acc + satfl_max_f1),
-        ('FedProx', fedprox_max_acc + fedprox_max_f1),
-        ('FedAvg', fedavg_max_acc + fedavg_max_f1),
-        ('相似度分组', similarity_max_acc + similarity_max_f1)
-    ]
-    combined_ranking = sorted(combined_scores, key=lambda x: x[1], reverse=True)
-    
-    logger.info("\n综合性能排名 (准确率 + F1分数):")
-    for i, (method, score) in enumerate(combined_ranking, 1):
-        logger.info(f"  {i}. {method}: {score:.2f}")
-    
-    # 显示最佳方法
-    best_acc_method = acc_ranking[0][0]
-    best_f1_method = f1_ranking[0][0]
-    best_eff_method = eff_ranking[0][0]
-    best_combined_method = combined_ranking[0][0]
-    
-    logger.info(f"\n=== 最佳表现 ===")
-    logger.info(f"最佳准确率: {best_acc_method}")
-    logger.info(f"最佳F1分数: {best_f1_method}")
-    logger.info(f"最佳资源效率: {best_eff_method}")
-    logger.info(f"最佳综合性能: {best_combined_method}")
+    print("="*80)
 
 
 if __name__ == "__main__":

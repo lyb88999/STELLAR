@@ -3,7 +3,9 @@ from experiments.fedprox_experiment import FedProxExperiment
 import logging
 from datetime import datetime
 import numpy as np
+import torch
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import yaml
 
 class LimitedPropagationFedProx(FedProxExperiment):
     """
@@ -12,7 +14,21 @@ class LimitedPropagationFedProx(FedProxExperiment):
     
     def __init__(self, config_path: str = "configs/propagation_fedprox_config.yaml"):
         """初始化有限传播FedProx实验"""
+        
+        # 预先加载配置以获取mu参数，必须在super().__init__()之前
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+        
+        # 确保mu参数在继承链初始化之前就存在
+        self.mu = config.get('fedprox', {}).get('mu', 0.01)
+        
+        # 现在可以安全地调用父类初始化
         super().__init__(config_path)
+        
+        # 降低并发数以平衡速度和稳定性 (原为6，设为3)
+        self.max_workers = 3
+        
+        self.logger.info(f"设置FedProx参数 μ={self.mu}")
         
         # 获取传播相关配置
         propagation_config = self.config.get('propagation', {})
@@ -27,6 +43,7 @@ class LimitedPropagationFedProx(FedProxExperiment):
         self.satellite_neighbors = {}
         
         self.logger.info(f"初始化有限传播FedProx实验")
+        self.logger.info(f"- FedProx参数 μ: {self.mu}")
         self.logger.info(f"- 传播跳数: {self.propagation_hops}")
         self.logger.info(f"- 最大卫星数: {self.max_propagation_satellites}")
         self.logger.info(f"- 轨道内链接: {self.intra_orbit_links}")
@@ -38,6 +55,14 @@ class LimitedPropagationFedProx(FedProxExperiment):
         
         # 创建卫星距离矩阵
         satellites = list(self.clients.keys())
+        # 动态检测每个轨道的最大卫星编号
+        orbit_max_sats = {}
+        for sat_id in satellites:
+            parts = sat_id.split('_')[1].split('-')
+            if len(parts) == 2:
+                orbit_id, sat_num = int(parts[0]), int(parts[1])
+                orbit_max_sats[orbit_id] = max(orbit_max_sats.get(orbit_id, 0), sat_num)
+        
         for sat_id in satellites:
             if sat_id not in self.satellite_neighbors:
                 self.satellite_neighbors[sat_id] = []
@@ -48,15 +73,20 @@ class LimitedPropagationFedProx(FedProxExperiment):
                 continue
                 
             orbit_id, sat_num = int(parts[0]), int(parts[1])
+            max_sat_num = orbit_max_sats.get(orbit_id, self.config['fl']['satellites_per_orbit'])
             
-            # 寻找同一轨道的邻居卫星
-            for neighbor_num in range(1, self.config['fl']['satellites_per_orbit'] + 1):
-                if neighbor_num == sat_num:
-                    continue  # 跳过自己
-                    
-                neighbor_id = f"satellite_{orbit_id}-{neighbor_num}"
-                if neighbor_id in satellites:
-                    self.satellite_neighbors[sat_id].append(neighbor_id)
+            # 寻找同一轨道的邻居卫星 (环形拓扑)
+            # 前一个邻居
+            prev_num = sat_num - 1 if sat_num > 1 else max_sat_num
+            prev_id = f"satellite_{orbit_id}-{prev_num}"
+            if prev_id in satellites:
+                self.satellite_neighbors[sat_id].append(prev_id)
+                
+            # 后一个邻居
+            next_num = sat_num + 1 if sat_num < max_sat_num else 1
+            next_id = f"satellite_{orbit_id}-{next_num}"
+            if next_id in satellites:
+                self.satellite_neighbors[sat_id].append(next_id)
             
             # 添加不同轨道的邻居（如果配置启用了跨轨道链接）
             if self.inter_orbit_links and self.propagation_hops > 1:
@@ -272,6 +302,11 @@ class LimitedPropagationFedProx(FedProxExperiment):
                 
                 # 标准化权重
                 total_samples = sum(weights)
+                if total_samples == 0:
+                    self.logger.warning(f"第 {round_num + 1} 轮没有有效的训练数据，跳过聚合")
+                    current_time = datetime.now().timestamp() + round_num * self.config['fl']['round_interval']
+                    continue
+                    
                 weights = [w/total_samples for w in weights]
                 
                 # FedAvg聚合（加权平均）
@@ -414,7 +449,15 @@ class LimitedPropagationFedProx(FedProxExperiment):
         
         # 检查每个卫星是否可见任何地面站
         for sat_id in self.clients.keys():
-            for station_id in ['station_0', 'station_1', 'station_2']:
+            # Sanity check: 确保卫星在网络模型中存在
+            if sat_id not in self.network_model.satellites:
+                # 仅记录一次警告，避免刷屏
+                if not hasattr(self, '_missing_sat_warning_logged'):
+                    self.logger.warning(f"发现客户端 {sat_id} 不在网络模型中 (可能是初始化后的状态不一致)，跳过可见性检查")
+                    self._missing_sat_warning_logged = True
+                continue
+                
+            for station_id in self.ground_stations.keys():
                 is_visible = self.network_model._check_visibility(station_id, sat_id, current_time)
                 if is_visible:
                     visible_satellites.append(sat_id)
@@ -446,3 +489,7 @@ class LimitedPropagationFedProx(FedProxExperiment):
         except Exception as e:
             self.logger.error(f"训练卫星 {sat_id} 出错: {str(e)}")
             return False, {}
+        finally:
+            # 无论成功与否，都清理显存
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()

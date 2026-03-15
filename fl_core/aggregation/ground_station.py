@@ -15,7 +15,7 @@ class GroundStationConfig:
     priority_levels: int = 3
     batch_size: int = 10  # 批处理大小
     aggregation_interval: float = 60.0  # 聚合间隔(秒)
-    min_updates: int = 2  # 最小更新数量
+    min_updates: int = 1  # 最小更新数量
     max_staleness: float = 300.0  # 最大容忍延迟(秒)
     timeout: float = 600.0  # 聚合超时时间(秒)
     weighted_average: bool = True  # 是否使用加权平均
@@ -63,9 +63,9 @@ class GroundStationAggregator:
                    model_update: Dict[str, torch.Tensor],
                    num_clients: int, priority: int = 1) -> bool:
         """接收轨道更新"""
-        if orbit_id not in [str(x) for x in self.responsible_orbits]:
-            self.logger.warning(f"轨道 {orbit_id} 不在负责范围内")
-            return False
+        # if orbit_id not in [str(x) for x in self.responsible_orbits]:
+        #     self.logger.warning(f"轨道 {orbit_id} 不在负责范围内")
+        #     return False
             
         # 计算更新大小（MB）
         size = sum(param.nelement() * param.element_size() 

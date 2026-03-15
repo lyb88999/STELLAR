@@ -86,7 +86,11 @@ class RealTrafficGenerator:
             raise ValueError("数据中缺少'Label'列")
             
         X = combined_df.drop(['Label'], axis=1)
-        y = combined_df['Label']
+        
+        # 处理标签：去除空值并统一转换为字符串
+        y = combined_df['Label'].dropna().astype(str)
+        # 确保X和y索引对齐
+        X = X.loc[y.index]
         
         # 移除非数值列(如果有)
         non_numeric_cols = X.select_dtypes(exclude=['float32', 'float64', 'int64']).columns
@@ -100,7 +104,8 @@ class RealTrafficGenerator:
         
         # 编码标签
         self.label_encoder = LabelEncoder()
-        y_encoded = self.label_encoder.fit_transform(y)
+        # 使用 .values 转换为 numpy 数组，避免 SystemError: bad argument to internal function
+        y_encoded = self.label_encoder.fit_transform(y.values)
         self.num_classes = len(self.label_encoder.classes_)
         
         print(f"类别编码: {dict(zip(self.label_encoder.classes_, range(self.num_classes)))}")
@@ -125,13 +130,18 @@ class RealTrafficGenerator:
         
         return self.feature_dim, self.num_classes
     
-    def generate_data(self, iid: bool = True, alpha: float = 1.0) -> Dict[str, TrafficFlowDataset]:
+    def generate_empty_dataset(self) -> TrafficFlowDataset:
+        """生成空数据集"""
+        return TrafficFlowDataset(torch.FloatTensor([]), torch.LongTensor([]))
+
+    def generate_data(self, iid: bool = True, alpha: float = 1.0, satellite_ids: List[str] = None) -> Dict[str, TrafficFlowDataset]:
         """
         生成并分配数据给卫星
         
         Args:
             iid: 是否为独立同分布数据
             alpha: Dirichlet分布参数(仅在non-iid时使用)
+            satellite_ids: 可选，指定卫星ID列表。如果提供，将忽略num_orbits和satellites_per_orbit循环
             
         Returns:
             Dict: 卫星ID -> 数据集
@@ -139,7 +149,16 @@ class RealTrafficGenerator:
         if not hasattr(self, 'X_train_tensor'):
             raise ValueError("请先调用load_and_preprocess_data加载数据")
             
-        print(f"为 {self.num_satellites} 个卫星分配数据, IID={iid}")
+        # 如果提供了ID列表，更新卫星数量
+        target_satellites = satellite_ids if satellite_ids else []
+        if not target_satellites:
+            # 兼容旧逻辑：生成ID列表
+            for orbit in range(1, self.num_orbits + 1):
+                for sat in range(1, self.satellites_per_orbit + 1):
+                    target_satellites.append(f"satellite_{orbit}-{sat}")
+        
+        actual_num_sats = len(target_satellites)
+        print(f"为 {actual_num_sats} 个卫星分配数据, IID={iid}")
         
         # 获取所有索引
         all_indices = list(range(len(self.X_train_tensor)))
@@ -149,30 +168,26 @@ class RealTrafficGenerator:
         
         if iid:
             # IID分配: 随机均匀分配
-            indices_per_satellite = len(all_indices) // self.num_satellites
-            remaining = len(all_indices) % self.num_satellites
+            indices_per_satellite = len(all_indices) // actual_num_sats
+            remaining = len(all_indices) % actual_num_sats
             
             start_idx = 0
-            for orbit in range(1, self.num_orbits + 1):
-                for sat in range(1, self.satellites_per_orbit + 1):
-                    sat_id = f"satellite_{orbit}-{sat}"
-                    sat_idx = (orbit - 1) * self.satellites_per_orbit + (sat - 1)
+            for i, sat_id in enumerate(target_satellites):
+                # 确定该卫星分配的样本数
+                extra = 1 if i < remaining else 0
+                num_samples = indices_per_satellite + extra
+                
+                # 选择样本
+                if start_idx + num_samples <= len(all_indices):
+                    satellite_indices = all_indices[start_idx:start_idx + num_samples]
+                    start_idx += num_samples
                     
-                    # 确定该卫星分配的样本数
-                    extra = 1 if sat_idx < remaining else 0
-                    num_samples = indices_per_satellite + extra
+                    # 创建卫星数据集
+                    sat_features = self.X_train_tensor[satellite_indices]
+                    sat_labels = self.y_train_tensor[satellite_indices]
+                    satellite_datasets[sat_id] = TrafficFlowDataset(sat_features, sat_labels)
                     
-                    # 选择样本
-                    if start_idx + num_samples <= len(all_indices):
-                        satellite_indices = all_indices[start_idx:start_idx + num_samples]
-                        start_idx += num_samples
-                        
-                        # 创建卫星数据集
-                        sat_features = self.X_train_tensor[satellite_indices]
-                        sat_labels = self.y_train_tensor[satellite_indices]
-                        satellite_datasets[sat_id] = TrafficFlowDataset(sat_features, sat_labels)
-                        
-                        print(f"为 {sat_id} 分配 {len(satellite_indices)} 个样本")
+                    print(f"为 {sat_id} 分配 {len(satellite_indices)} 个样本")
         else:
             # Non-IID分配: 使用Dirichlet分布
             # 按标签分组
@@ -185,49 +200,44 @@ class RealTrafficGenerator:
             
             # 使用Dirichlet分布来分配每个卫星的标签比例
             label_distribution = np.random.dirichlet(
-                [alpha] * self.num_satellites, 
+                [alpha] * actual_num_sats, 
                 size=self.num_classes
             )
             
             # 分配数据
-            for orbit in range(1, self.num_orbits + 1):
-                for sat in range(1, self.satellites_per_orbit + 1):
-                    sat_id = f"satellite_{orbit}-{sat}"
-                    sat_idx = (orbit - 1) * self.satellites_per_orbit + (sat - 1)
+            for i, sat_id in enumerate(target_satellites):
+                satellite_indices = []
+                
+                # 为每个标签分配样本
+                for label, indices in label_indices.items():
+                    # 计算该卫星应获取的该标签样本数
+                    sat_prop = label_distribution[label][i]
+                    num_samples = int(sat_prop * len(indices))
                     
-                    if sat_idx < self.num_satellites:
-                        satellite_indices = []
-                        
-                        # 为每个标签分配样本
-                        for label, indices in label_indices.items():
-                            # 计算该卫星应获取的该标签样本数
-                            sat_prop = label_distribution[label][sat_idx]
-                            num_samples = int(sat_prop * len(indices))
-                            
-                            # 随机选择样本
-                            if num_samples > 0 and indices:
-                                selected = self.random_state.choice(
-                                    indices, 
-                                    min(num_samples, len(indices)), 
-                                    replace=False
-                                )
-                                satellite_indices.extend(selected)
-                                # 从可用索引中移除已选择的样本
-                                indices = list(set(indices) - set(selected))
-                                label_indices[label] = indices
-                        
-                        # 创建卫星数据集
-                        if satellite_indices:
-                            sat_features = self.X_train_tensor[satellite_indices]
-                            sat_labels = self.y_train_tensor[satellite_indices]
-                            satellite_datasets[sat_id] = TrafficFlowDataset(sat_features, sat_labels)
-                            
-                            label_dist = torch.bincount(sat_labels, minlength=self.num_classes)
-                            print(f"为 {sat_id} 分配 {len(satellite_indices)} 个样本, 标签分布: {label_dist}")
+                    # 随机选择样本
+                    if num_samples > 0 and indices:
+                        selected = self.random_state.choice(
+                            indices, 
+                            min(num_samples, len(indices)), 
+                            replace=False
+                        )
+                        satellite_indices.extend(selected)
+                        # 从可用索引中移除已选择的样本
+                        indices = list(set(indices) - set(selected))
+                        label_indices[label] = indices
+                
+                # 创建卫星数据集
+                if satellite_indices:
+                    sat_features = self.X_train_tensor[satellite_indices]
+                    sat_labels = self.y_train_tensor[satellite_indices]
+                    satellite_datasets[sat_id] = TrafficFlowDataset(sat_features, sat_labels)
+                    
+                    label_dist = torch.bincount(sat_labels, minlength=self.num_classes)
+                    print(f"为 {sat_id} 分配 {len(satellite_indices)} 个样本, 标签分布: {label_dist}")
         
         return satellite_datasets
     
-    def generate_region_similar_data(self, iid: bool = False, alpha: float = 0.6, overlap_ratio: float = 0.5) -> Dict[str, TrafficFlowDataset]:
+    def generate_region_similar_data(self, iid: bool = False, alpha: float = 0.6, overlap_ratio: float = 0.5, satellite_ids: List[str] = None) -> Dict[str, TrafficFlowDataset]:
         """
         生成具有区域相似性的数据分布 (修改版)
         
@@ -235,6 +245,7 @@ class RealTrafficGenerator:
             iid: 是否为独立同分布数据（在本方法中不起作用，保留参数是为了保持接口一致）
             alpha: Dirichlet参数（控制非IID程度）
             overlap_ratio: 区域内数据重叠比例（0-1之间）
+            satellite_ids: 可选，指定卫星ID列表。如果提供，将忽略num_orbits和satellites_per_orbit循环
             
         Returns:
             Dict: 卫星ID -> 数据集
@@ -242,14 +253,33 @@ class RealTrafficGenerator:
         if not hasattr(self, 'X_train_tensor'):
             raise ValueError("请先调用load_and_preprocess_data加载数据")
             
-        print(f"为 {self.num_satellites} 个卫星生成具有区域相似性的数据分布，重叠比例: {overlap_ratio}")
+        # 如果提供了ID列表，更新卫星数量
+        target_satellites = satellite_ids if satellite_ids else []
+        if not target_satellites:
+            # 兼容旧逻辑：生成ID列表
+            for orbit in range(1, self.num_orbits + 1):
+                for sat in range(1, self.satellites_per_orbit + 1):
+                    target_satellites.append(f"satellite_{orbit}-{sat}")
+        
+        actual_num_sats = len(target_satellites)
+        print(f"为 {actual_num_sats} 个卫星生成具有区域相似性的数据分布，重叠比例: {overlap_ratio}")
         
         # 按轨道分组卫星
         orbit_satellites = {}
+        # 初始化所有轨道
         for orbit in range(1, self.num_orbits + 1):
             orbit_satellites[orbit] = []
-            for sat in range(1, self.satellites_per_orbit + 1):
-                orbit_satellites[orbit].append(f"satellite_{orbit}-{sat}")
+            
+        # 将卫星分配到轨道
+        for sat_id in target_satellites:
+            try:
+                # 解析 satellite_{orbit}-{sat}
+                parts = sat_id.split('_')[1].split('-')
+                orbit = int(parts[0])
+                if orbit in orbit_satellites:
+                    orbit_satellites[orbit].append(sat_id)
+            except (IndexError, ValueError):
+                continue
         
         # 获取所有特征和标签
         all_features = self.X_train_tensor
@@ -342,9 +372,13 @@ class RealTrafficGenerator:
         # 分配具有重叠的数据集
         satellite_datasets = {}
         for orbit, satellites in orbit_satellites.items():
+            if orbit not in orbit_data: continue
+            
             orbit_features = orbit_data[orbit]['features']
             orbit_labels = orbit_data[orbit]['labels']
             orbit_size = orbit_data[orbit]['size']
+            
+            if not satellites: continue
             
             # 计算每个卫星的基础样本数
             base_samples_per_sat = orbit_size // len(satellites)

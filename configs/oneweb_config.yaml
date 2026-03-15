@@ -1,0 +1,81 @@
+# 网络配置
+network:
+  tle_file: "configs/oneweb_TLEs.txt"
+  max_distance: 5000.0  # km, increased for OneWeb connectivity
+
+# 能源配置
+energy:
+  config_file: "configs/energy_config.yaml"
+  
+# 联邦学习配置
+fl:
+  num_satellites: 651  # 1953 lines / 3 lines per sat = 651 satellites
+  satellites_per_orbit: 40  # Approximate, will refine
+  num_orbits: 12  # Approximate
+  num_rounds: 20
+  round_interval: 300
+  
+# 数据配置
+data:
+  dataset: "real_traffic"
+  csv_path: "data/traffic_data.csv"   # <-- update this path
+  test_size: 0.2
+  iid: false
+  alpha: 0.5
+  region_similarity: false
+  overlap_ratio: 0.5
+
+# 模型配置
+model:
+  type: "traffic_classifier"
+  hidden_dim: 64
+  batch_size: 32
+  learning_rate: 0.01
+  momentum: 0.9
+  
+# 客户端配置
+client:
+  batch_size: 32
+  local_epochs: 5
+  learning_rate: 0.01
+  momentum: 0.9
+  compute_capacity: 1.0
+  storage_capacity: 1000.0
+  
+# 聚合配置
+aggregation:
+  min_updates: 1 # Reduced to ensure aggregation happens even with few updates
+  max_staleness: 300.0
+  timeout: 600.0
+  weighted_average: true
+
+# 地面站配置
+ground_station:
+  bandwidth_limit: 5000.0  # Mbps, increased
+  storage_limit: 50000.0   # MB, increased
+  priority_levels: 3
+  batch_size: 50
+  aggregation_interval: 60.0
+
+# 传播配置 (for propagation experiments)
+propagation:
+  max_satellites: 648
+  hops: 2
+
+# 分组配置 (for STELLAR/SimilarityGrouping)
+group:
+  max_distance: 5000.0
+  max_group_size: 5
+  similarity_threshold: 0.5
+  max_group_size_threshold: 4
+  similarity_refresh_rounds: 5
+  initial_group_size: 1  # 初始阶段每个卫星自成一组
+  weights:
+    alpha: 0.4
+    beta: 0.3
+    gamma: 0.3
+  
+# 鲁棒性配置
+robustness:
+  parameter_noise_level: 0.0
+  noise_start_round: 5
